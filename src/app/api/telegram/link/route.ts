@@ -10,8 +10,8 @@ export async function POST(req: Request) {
     const userId = await requireUserId();
     if (!telegramEnabled()) return Response.json({ error: "unavailable", message: "Telegram isn't configured." }, { status: 503 });
     await rateLimit(`tg-link:${userId}`, 10, 3600, "Telegram links");
-    const { url } = await createLinkCode(userId);
-    return Response.json({ url }, { headers: { "Cache-Control": "no-store" } });
+    const link = await createLinkCode(userId);
+    return Response.json(link, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return errorResponse(e);
   }

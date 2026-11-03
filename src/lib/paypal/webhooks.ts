@@ -87,6 +87,10 @@ export async function handleWebhookEvent(event: Event): Promise<string> {
       purchaseId = r.custom_id;
       if (purchaseId && r.id) {
         const before = await getPurchase(purchaseId);
+        if (!before) {
+          outcome = "unknown purchase";
+          break;
+        }
         const after = await markCaptured(purchaseId, { orderId: r.supplementary_data?.related_ids?.order_id, captureId: r.id }, "PayPal confirmed");
         if (before && after && before.status !== "captured" && after.status === "captured") {
           outcome = "reconciled: captured";

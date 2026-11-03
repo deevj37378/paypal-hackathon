@@ -40,7 +40,9 @@ export function verifyTelegramSecret(header: string | null) {
 export async function createLinkCode(userId: string) {
   const code = randomBytes(18).toString("base64url"); // 24 chars, allowed in start params
   await db().insert(schema.telegramLinkCodes).values({ code, userId, expiresAt: new Date(Date.now() + 15 * 60_000) });
-  return { code, url: `https://t.me/${await getBotUsername()}?start=${code}` };
+  const bot = await getBotUsername();
+  // t.me is blocked on some networks/ISPs, so also offer the tg:// app link and a manual "/start <code>".
+  return { code, bot, url: `https://t.me/${bot}?start=${code}`, appUrl: `tg://resolve?domain=${bot}&start=${code}` };
 }
 
 /** Consume a /start code and attach the chat to the user. Returns the user id or null. */

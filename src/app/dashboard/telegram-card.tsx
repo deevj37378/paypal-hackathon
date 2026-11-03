@@ -2,29 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CopyField } from "./agents-panel";
+
+type Link = { url: string; appUrl: string; code: string; bot: string };
 
 export function TelegramCard({ connected, username, enabled }: { connected: boolean; username: string | null; enabled: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [opened, setOpened] = useState(false);
+  const [link, setLink] = useState<Link | null>(null);
 
   const connect = () =>
     start(async () => {
       setError(null);
-      // Open the tab synchronously (popup blockers), then point it at the one-time link.
-      const tab = window.open("", "_blank");
       const res = await fetch("/api/telegram/link", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) {
-        tab?.close();
-        return setError(data.message ?? "Couldn't create a Telegram link.");
-      }
-      if (tab) tab.location.href = data.url;
-      else window.location.href = data.url;
-      setOpened(true);
+      if (!res.ok || !data.code) return setError(data.message ?? "Couldn't create a Telegram link.");
+      setLink(data as Link);
     });
 
   const disconnect = () =>
@@ -39,7 +35,7 @@ export function TelegramCard({ connected, username, enabled }: { connected: bool
         <CardDescription>Approvals on your phone</CardDescription>
         <CardTitle className="text-base">{connected ? `Telegram${username ? ` · @${username}` : ""}` : "Telegram not connected"}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
+      <CardContent className="space-y-3 text-sm">
         {!enabled ? (
           <p className="text-muted-foreground">Telegram isn&apos;t configured on this server. Approve purchases here instead.</p>
         ) : connected ? (
@@ -49,22 +45,38 @@ export function TelegramCard({ connected, username, enabled }: { connected: bool
               Disconnect
             </Button>
           </>
-        ) : (
+        ) : !link ? (
           <>
             <p className="text-muted-foreground">Get Approve / Decline buttons in Telegram when an agent needs your OK.</p>
             <Button size="sm" onClick={connect} disabled={pending}>
-              Connect Telegram
+              {pending ? "Creating link…" : "Connect Telegram"}
             </Button>
-            {opened && (
-              <p className="text-muted-foreground">
-                Press <strong>Start</strong> in Telegram, then{" "}
-                <button className="underline" onClick={() => router.refresh()}>
-                  refresh
-                </button>
-                .
-              </p>
-            )}
           </>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-muted-foreground">Use any one of these (the code works once, for 15 minutes):</p>
+            <div className="flex flex-wrap gap-2">
+              <a href={link.appUrl} className={buttonVariants({ size: "sm" })}>
+                Open in Telegram app
+              </a>
+              <a href={link.url} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm", variant: "outline" })}>
+                Open t.me link
+              </a>
+            </div>
+            <div className="space-y-1">
+              <p className="text-muted-foreground">
+                Or open <strong>@{link.bot}</strong> in Telegram and send:
+              </p>
+              <CopyField value={`/start ${link.code}`} label="Telegram start command" />
+            </div>
+            <p className="text-muted-foreground">
+              After Telegram says &ldquo;Connected&rdquo;,{" "}
+              <button className="underline underline-offset-2" onClick={() => router.refresh()}>
+                refresh
+              </button>
+              .
+            </p>
+          </div>
         )}
         {error && (
           <p role="alert" className="text-destructive">
