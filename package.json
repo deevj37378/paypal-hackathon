@@ -11,7 +11,10 @@
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "db:seed": "tsx --env-file=.env.local scripts/seed.ts"
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "test:db": "vitest run --config vitest.db.config.mts",
+    "db:push:prod": "DRIZZLE_TARGET=prod drizzle-kit push",
+    "db:seed:prod": "node scripts/with-prod-db.mjs tsx --env-file=.env.local scripts/seed.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

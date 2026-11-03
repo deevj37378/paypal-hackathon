@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
+import { type DbExecutor, withUserLock } from "@/db/tx";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/ids";
 import { formatUsd, toCents } from "@/lib/money";
@@ -9,6 +10,7 @@ import { chargeVaultedWallet, refundCapture } from "@/lib/paypal/payments";
 import { checkPurchase, type CheckItem, type CheckResult } from "@/lib/policy/check";
 import { getActivePolicy, getActiveVault, getUser } from "@/lib/users";
 import { logEvent } from "./events";
+import { notifyPurchase } from "./notify";
 
 /** Thrown for bad agent input (unknown merchant/product). Becomes a 400 with a readable message. */
 export class PurchaseInputError extends Error {
@@ -42,8 +44,8 @@ const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 const monthStartUtc = (now = new Date()) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
 /** Charged and not refunded this calendar month (UTC). "processing" counts so parallel requests can't overspend. */
-export async function spentThisMonthCents(userId: string, excludePurchaseId?: string) {
-  const [row] = await db()
+export async function spentThisMonthCents(userId: string, excludePurchaseId?: string, ex: DbExecutor = db()) {
+  const [row] = await ex
     .select({ total: sql<number>`coalesce(sum(${schema.purchases.totalCents}), 0)::int` })
     .from(schema.purchases)
     .where(
@@ -57,8 +59,8 @@ export async function spentThisMonthCents(userId: string, excludePurchaseId?: st
   return Number(row?.total ?? 0);
 }
 
-async function hasPurchasedFrom(userId: string, merchantId: string) {
-  const [row] = await db()
+async function hasPurchasedFrom(userId: string, merchantId: string, ex: DbExecutor) {
+  const [row] = await ex
     .select({ id: schema.purchases.id })
     .from(schema.purchases)
     .where(
@@ -73,7 +75,7 @@ async function hasPurchasedFrom(userId: string, merchantId: string) {
 }
 
 /** Policy check + preconditions the pure checker doesn't know about (PayPal linked, policy present). */
-async function evaluate(p: {
+async function evaluate(ex: DbExecutor, p: {
   userId: string;
   merchant: { id: string; name: string };
   items: CheckItem[];
@@ -84,10 +86,10 @@ async function evaluate(p: {
   excludePurchaseId?: string;
 }): Promise<{ result: CheckResult; policyId: string | null }> {
   const [policy, vault, spent, purchasedBefore] = await Promise.all([
-    getActivePolicy(p.userId),
-    getActiveVault(p.userId),
-    spentThisMonthCents(p.userId, p.excludePurchaseId),
-    hasPurchasedFrom(p.userId, p.merchant.id),
+    getActivePolicy(p.userId, ex),
+    getActiveVault(p.userId, ex),
+    spentThisMonthCents(p.userId, p.excludePurchaseId, ex),
+    hasPurchasedFrom(p.userId, p.merchant.id, ex),
   ]);
   if (!policy) {
     const detail = "There are no active spending rules, so nothing can be bought yet.";
@@ -117,19 +119,44 @@ async function evaluate(p: {
   return { result, policyId: policy.id };
 }
 
-/** Entry point for agents: validate → price from the store → deterministic rule check → act. */
+/** Entry point for agents: validate → price from the store → atomic rule check + reserve → charge. */
 export async function requestPurchase(agent: Agent, raw: unknown) {
   const input = RequestPurchaseInput.parse(raw);
+  const existing = await findByIdempotencyKey(db(), agent.id, input.idempotency_key);
+  if (existing) return existing;
 
-  if (input.idempotency_key) {
-    const [existing] = await db()
-      .select()
-      .from(schema.purchases)
-      .where(and(eq(schema.purchases.agentId, agent.id), eq(schema.purchases.idempotencyKey, input.idempotency_key)))
-      .limit(1);
-    if (existing) return existing;
+  const order = await resolveOrder(input);
+  const { purchase, created } = await reservePurchase(agent, input, order);
+  if (!created) return purchase;
+
+  await logEvent(purchase.id, "requested", `${agent.name} asked to buy ${describeItems(order.items)} for ${formatUsd(order.totalCents)}.`, {
+    reason: input.reason,
+  });
+  await logEvent(purchase.id, "rule_check", outcomeMessage(purchase.decision), purchase.decision);
+  await notifyPurchase(purchase, agent.name);
+
+  if (purchase.status === "processing") {
+    const charged = await chargePurchase(purchase);
+    await notifyPurchase(charged, agent.name);
+    return charged;
   }
+  return purchase;
+}
 
+async function findByIdempotencyKey(ex: DbExecutor, agentId: string, key: string | undefined) {
+  if (!key) return null;
+  const [p] = await ex
+    .select()
+    .from(schema.purchases)
+    .where(and(eq(schema.purchases.agentId, agentId), eq(schema.purchases.idempotencyKey, key)))
+    .limit(1);
+  return p ?? null;
+}
+
+type ResolvedOrder = { merchant: { id: string; name: string }; items: CheckItem[]; totalCents: number };
+
+/** Prices and categories come from the store, never from the agent. */
+async function resolveOrder(input: RequestPurchaseInput): Promise<ResolvedOrder> {
   const [merchant] = await db().select().from(schema.merchants).where(eq(schema.merchants.id, input.merchant_id)).limit(1);
   if (!merchant) throw new PurchaseInputError(`Unknown merchant "${input.merchant_id}". Use search_store to find products.`);
 
@@ -142,61 +169,53 @@ export async function requestPurchase(agent: Agent, raw: unknown) {
   const missing = productIds.filter((id) => !byId.has(id));
   if (missing.length) throw new PurchaseInputError(`Unknown product(s) at ${merchant.name}: ${missing.join(", ")}.`);
 
-  // Prices and categories come from the store, never from the agent.
   const items: CheckItem[] = input.items.map((i) => {
     const p = byId.get(i.product_id)!;
     return { productId: p.id, name: p.name, category: p.category, quantity: i.quantity, unitPriceCents: p.priceCents };
   });
-  const totalCents = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
+  return { merchant: { id: merchant.id, name: merchant.name }, items, totalCents: items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0) };
+}
 
-  const { result, policyId } = await evaluate({
-    userId: agent.userId,
-    merchant,
-    items,
-    totalCents,
-    claimedTotalCents: toCents(input.total),
-    currency: input.currency,
-  });
+/**
+ * Atomic check-and-reserve. Under a per-user lock: read this month's spend (which counts
+ * "processing" reservations), run the pure checker, and insert the purchase. An approved
+ * purchase is inserted as "processing", so the next locked request already counts it.
+ * Exported for the concurrency test.
+ */
+export async function reservePurchase(agent: Agent, input: RequestPurchaseInput, order: ResolvedOrder) {
+  return withUserLock(agent.userId, async (tx) => {
+    const existing = await findByIdempotencyKey(tx, agent.id, input.idempotency_key);
+    if (existing) return { purchase: existing, created: false };
 
-  const status = result.outcome === "approved" ? "processing" : result.outcome;
-  const id = newId("pur");
-  const [purchase] = await db()
-    .insert(schema.purchases)
-    .values({
-      id,
+    const { result, policyId } = await evaluate(tx, {
       userId: agent.userId,
-      agentId: agent.id,
-      merchantId: merchant.id,
-      items,
-      totalCents,
+      merchant: order.merchant,
+      items: order.items,
+      totalCents: order.totalCents,
+      claimedTotalCents: toCents(input.total),
       currency: input.currency,
-      reason: input.reason ?? null,
-      status,
-      decision: result,
-      policyId,
-      idempotencyKey: input.idempotency_key ?? null,
-      approvalExpiresAt: status === "pending_approval" ? new Date(Date.now() + APPROVAL_TTL_MS) : null,
-    })
-    .onConflictDoNothing()
-    .returning();
-
-  if (!purchase) {
-    // Lost an idempotency race: return the winner.
-    const [winner] = await db()
-      .select()
-      .from(schema.purchases)
-      .where(and(eq(schema.purchases.agentId, agent.id), eq(schema.purchases.idempotencyKey, input.idempotency_key!)))
-      .limit(1);
-    return winner;
-  }
-
-  await logEvent(id, "requested", `${agent.name} asked to buy ${describeItems(items)} for ${formatUsd(totalCents)}.`, {
-    reason: input.reason,
+    });
+    const status = result.outcome === "approved" ? "processing" : result.outcome;
+    const [purchase] = await tx
+      .insert(schema.purchases)
+      .values({
+        id: newId("pur"),
+        userId: agent.userId,
+        agentId: agent.id,
+        merchantId: order.merchant.id,
+        items: order.items,
+        totalCents: order.totalCents,
+        currency: input.currency,
+        reason: input.reason ?? null,
+        status,
+        decision: result,
+        policyId,
+        idempotencyKey: input.idempotency_key ?? null,
+        approvalExpiresAt: status === "pending_approval" ? new Date(Date.now() + APPROVAL_TTL_MS) : null,
+      })
+      .returning();
+    return { purchase, created: true };
   });
-  await logEvent(id, "rule_check", outcomeMessage(result), result);
-
-  if (status === "processing") return chargePurchase(purchase);
-  return purchase;
 }
 
 /** Charge the vaulted wallet. Caller must have moved the purchase to "processing". */
@@ -290,29 +309,37 @@ export async function decidePurchase(opts: { userId: string; purchaseId: string;
   }
   await logEvent(claimed.id, "approved", `You approved this purchase (${opts.via}).`);
 
-  // Re-check with fresh numbers: approval satisfies holds, but limits still apply.
+  // Re-check with fresh numbers under the user's lock: approval satisfies holds, but limits still apply.
   const [merchant] = await db().select().from(schema.merchants).where(eq(schema.merchants.id, claimed.merchantId)).limit(1);
-  const { result } = await evaluate({
-    userId: claimed.userId,
-    merchant,
-    items: claimed.items,
-    totalCents: claimed.totalCents,
-    claimedTotalCents: claimed.totalCents,
-    currency: claimed.currency,
-    humanApproved: true,
-    excludePurchaseId: claimed.id,
+  const recheck = await withUserLock(claimed.userId, async (tx) => {
+    const { result } = await evaluate(tx, {
+      userId: claimed.userId,
+      merchant,
+      items: claimed.items,
+      totalCents: claimed.totalCents,
+      claimedTotalCents: claimed.totalCents,
+      currency: claimed.currency,
+      humanApproved: true,
+      excludePurchaseId: claimed.id,
+    });
+    if (result.outcome !== "approved") {
+      const [blocked] = await tx
+        .update(schema.purchases)
+        .set({ status: "blocked", decision: result, updatedAt: new Date() })
+        .where(eq(schema.purchases.id, claimed.id))
+        .returning();
+      return { result, blocked };
+    }
+    return { result, blocked: null };
   });
-  if (result.outcome !== "approved") {
-    const [blocked] = await db()
-      .update(schema.purchases)
-      .set({ status: "blocked", decision: result, updatedAt: new Date() })
-      .where(eq(schema.purchases.id, claimed.id))
-      .returning();
-    await logEvent(claimed.id, "rule_check", `Re-checked after approval: ${outcomeMessage(result)}`, result);
-    return blocked;
+  if (recheck.blocked) {
+    await logEvent(claimed.id, "rule_check", `Re-checked after approval: ${outcomeMessage(recheck.result)}`, recheck.result);
+    return recheck.blocked;
   }
-  await logEvent(claimed.id, "rule_check", "Re-checked after approval: all rules pass.", result);
-  return chargePurchase(claimed);
+  await logEvent(claimed.id, "rule_check", "Re-checked after approval: all rules pass.", recheck.result);
+  const charged = await chargePurchase(claimed);
+  await notifyPurchase(charged);
+  return charged;
 }
 
 export async function expireStaleApprovals(userId?: string) {

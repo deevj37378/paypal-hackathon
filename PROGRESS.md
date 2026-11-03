@@ -18,6 +18,9 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
 
 - **Deployed** (Nov 3): Vercel project `allowance`, production env set (fresh SESSION_SECRET/CRON_SECRET, 15-min payout hold). Health ok; PayPal client token bound to the prod domain works; setup tokens created; daily cron backstop.
 
+- **Race fix** (Nov 3): check-and-reserve is atomic per user. `reservePurchase` runs in a Neon WebSocket transaction holding `pg_advisory_xact_lock(user)`; the pure checker is unchanged. `npm run test:db`: 5 parallel $30 vs a $100 limit → exactly 3 reserved, 2 blocked; concurrent same idempotency key → one purchase. Without the lock the test fails (5/5 reserved), so it really guards the bug.
+- **Neon dev branch**: `.env.local` DATABASE_URL = dev branch; live DB kept as PROD_DATABASE_URL (`npm run db:push:prod`, `db:seed:prod`). DB tests refuse to run against the live DB.
+
 ## Next
 - **M3**: MCP server (`search_store`, `get_allowance_status`, `request_purchase`, `get_purchase_status`) over the same service; test with Claude Desktop + MCP Inspector.
 

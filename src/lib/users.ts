@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { DbExecutor } from "@/db/tx";
 import { newId } from "@/lib/ids";
 import { DEFAULT_POLICY, PolicyRules } from "@/lib/policy/schema";
 
@@ -23,8 +24,8 @@ export async function getUser(userId: string) {
   return u ?? null;
 }
 
-export async function getActivePolicy(userId: string) {
-  const [p] = await db()
+export async function getActivePolicy(userId: string, ex: DbExecutor = db()) {
+  const [p] = await ex
     .select()
     .from(schema.policies)
     .where(and(eq(schema.policies.userId, userId), eq(schema.policies.status, "active")))
@@ -33,8 +34,8 @@ export async function getActivePolicy(userId: string) {
   return p ? { ...p, rules: PolicyRules.parse(p.rules) } : null;
 }
 
-export async function getActiveVault(userId: string) {
-  const [v] = await db()
+export async function getActiveVault(userId: string, ex: DbExecutor = db()) {
+  const [v] = await ex
     .select()
     .from(schema.paypalVaults)
     .where(and(eq(schema.paypalVaults.userId, userId), eq(schema.paypalVaults.status, "active")))
