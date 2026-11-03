@@ -14,6 +14,9 @@ import { getSessionUserId } from "@/lib/session";
 import { AgentsPanel } from "./agents-panel";
 import { AutoRefresh } from "./auto-refresh";
 import { ApprovalButtons, RefundButton } from "./purchase-actions";
+import { TelegramCard } from "./telegram-card";
+import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
+import { telegramEnabled } from "@/lib/telegram";
 
 export const metadata = { title: "Dashboard · Allowance" };
 
@@ -86,6 +89,8 @@ async function DashboardContent() {
           </CardContent>
         </Card>
       )}
+
+      <TelegramCard connected={Boolean(d.user.telegramChatId)} username={d.user.telegramUsername} enabled={telegramEnabled()} />
 
       <AgentsPanel
         mcpUrl={`${env().APP_URL}/api/mcp`}
@@ -169,27 +174,6 @@ function RulesCard({ policy }: { policy: PolicyRules | null }) {
   );
 }
 
-const STATUS: Record<string, { label: string; className: string }> = {
-  captured: { label: "Paid", className: "bg-emerald-100 text-emerald-800" },
-  processing: { label: "Processing", className: "bg-sky-100 text-sky-800" },
-  pending_approval: { label: "Needs approval", className: "bg-amber-100 text-amber-800" },
-  blocked: { label: "Blocked", className: "bg-red-100 text-red-800" },
-  declined: { label: "Declined", className: "bg-zinc-100 text-zinc-700" },
-  expired: { label: "Expired", className: "bg-zinc-100 text-zinc-700" },
-  failed: { label: "Failed", className: "bg-red-100 text-red-800" },
-  refunded: { label: "Refunded", className: "bg-violet-100 text-violet-800" },
-};
-
-const PAYOUT: Record<string, string> = {
-  none: "",
-  scheduled: "Held for refunds",
-  processing: "Paying store…",
-  sent: "Paying store…",
-  paid: "Store paid",
-  cancelled: "Payout cancelled",
-  failed: "Payout failed",
-};
-
 function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
   return (
     <Card>
@@ -216,14 +200,16 @@ function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
             </TableHeader>
             <TableBody>
               {purchases.map(({ purchase: p, agentName, merchantName }) => {
-                const s = STATUS[p.status] ?? { label: p.status, className: "" };
+                const s = PURCHASE_STATUS[p.status] ?? { label: p.status, className: "" };
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       {p.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC
                     </TableCell>
                     <TableCell className="max-w-64">
-                      <p className="truncate">{p.items.map((i) => i.name).join(", ")}</p>
+                      <Link href={`/purchases/${p.id}`} className="block truncate font-medium hover:underline">
+                        {p.items.map((i) => i.name).join(", ")}
+                      </Link>
                       <p className="truncate text-xs text-muted-foreground">
                         {merchantName}
                         {(p.status === "blocked" || p.status === "failed") && ` · ${p.failureReason ?? p.decision.reasons[0] ?? ""}`}
@@ -233,8 +219,8 @@ function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
                     <TableCell className="text-right tabular-nums">{formatUsd(p.totalCents)}</TableCell>
                     <TableCell>
                       <Badge className={s.className}>{s.label}</Badge>
-                      {PAYOUT[p.payoutStatus] && p.status !== "refunded" && (
-                        <p className="mt-1 text-xs text-muted-foreground">{PAYOUT[p.payoutStatus]}</p>
+                      {PAYOUT_STATUS[p.payoutStatus] && p.status !== "refunded" && (
+                        <p className="mt-1 text-xs text-muted-foreground">{PAYOUT_STATUS[p.payoutStatus]}</p>
                       )}
                     </TableCell>
                     <TableCell className="text-right">{p.status === "captured" && <RefundButton purchaseId={p.id} />}</TableCell>

@@ -37,6 +37,9 @@ export const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name"),
   isDemo: integer("is_demo").notNull().default(0),
+  /** Telegram chat that receives approval requests (set via the one-time /start deep link). */
+  telegramChatId: text("telegram_chat_id"),
+  telegramUsername: text("telegram_username"),
   createdAt: createdAt(),
 });
 
@@ -141,6 +144,8 @@ export const purchases = pgTable(
     payoutDueAt: ts("payout_due_at"),
     payoutCents: integer("payout_cents"),
     payoutBatchId: text("payout_batch_id"),
+    /** Telegram approval message, edited in place once the purchase is decided. */
+    telegramMessageId: text("telegram_message_id"),
     capturedAt: ts("captured_at"),
     createdAt: createdAt(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -178,3 +183,21 @@ export const rateLimits = pgTable(
   },
   (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
 );
+
+/** One-time codes for the t.me/<bot>?start=<code> deep link that connects a Telegram chat. */
+export const telegramLinkCodes = pgTable("telegram_link_codes", {
+  code: text("code").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+});
+
+/** Webhook deliveries we've processed (PayPal retries; this makes handling idempotent). */
+export const webhookEvents = pgTable("webhook_events", {
+  id: text("id").primaryKey(), // "<source>:<event id>"
+  source: text("source").notNull(),
+  type: text("type").notNull(),
+  purchaseId: text("purchase_id"),
+  outcome: text("outcome"),
+  receivedAt: createdAt(),
+});

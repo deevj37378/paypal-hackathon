@@ -224,7 +224,7 @@ export async function reservePurchase(agent: Agent, input: RequestPurchaseInput,
 
 /** Charge the vaulted wallet. Caller must have moved the purchase to "processing". */
 async function chargePurchase(purchase: Purchase): Promise<Purchase> {
-  const [vault, user] = await Promise.all([getActiveVault(purchase.userId), getUser(purchase.userId)]);
+  const vault = await getActiveVault(purchase.userId);
   if (!vault) return fail(purchase, "PayPal is no longer linked.");
   try {
     const res = await chargeVaultedWallet({
@@ -237,37 +237,62 @@ async function chargePurchase(purchase: Purchase): Promise<Purchase> {
     if (res.captureStatus !== "COMPLETED" || !res.captureId) {
       return fail(purchase, `PayPal returned capture status ${res.captureStatus ?? "unknown"}.`, res);
     }
-    const holdSeconds = user?.isDemo ? env().DEMO_PAYOUT_HOLD_SECONDS : env().PAYOUT_HOLD_SECONDS;
-    const now = new Date();
-    const [updated] = await db()
-      .update(schema.purchases)
-      .set({
-        status: "captured",
-        paypalOrderId: res.orderId,
-        paypalCaptureId: res.captureId,
-        capturedAt: now,
-        payoutStatus: "scheduled",
-        payoutDueAt: new Date(now.getTime() + holdSeconds * 1000),
-        updatedAt: now,
-      })
-      .where(eq(schema.purchases.id, purchase.id))
-      .returning();
-    await logEvent(purchase.id, "captured", `Charged ${formatUsd(purchase.totalCents)} to the saved PayPal account.`, {
-      orderId: res.orderId,
-      captureId: res.captureId,
-    });
-    await logEvent(
-      purchase.id,
-      "payout_scheduled",
-      holdSeconds === 0
-        ? "Merchant payout is ready to send."
-        : `Merchant payout held for ${humanDuration(holdSeconds)} so a refund can still cancel it.`,
-    );
-    return updated;
+    return (await markCaptured(purchase.id, { orderId: res.orderId, captureId: res.captureId }, "Charged")) ?? purchase;
   } catch (e) {
-    const msg = e instanceof PayPalError ? e.message : (e as Error).message;
-    return fail(purchase, `PayPal charge failed: ${msg}`, e instanceof PayPalError ? { debugId: e.debugId } : undefined);
+    // A definitive PayPal rejection (4xx, e.g. INSTRUMENT_DECLINED) means nothing was charged.
+    if (e instanceof PayPalError && e.status >= 400 && e.status < 500) {
+      return fail(purchase, `PayPal declined the charge: ${e.message}`, { debugId: e.debugId });
+    }
+    // Network error / 5xx after retries: the charge may or may not have happened. Stay "processing";
+    // the PAYMENT.CAPTURE.* webhook (custom_id = purchase id) settles it, or the sweeper fails it later.
+    await logEvent(purchase.id, "awaiting_confirmation", "No clear answer from PayPal yet; waiting for PayPal to confirm.", {
+      error: e instanceof PayPalError ? { message: e.message, debugId: e.debugId } : String(e),
+    });
+    const [current] = await db().select().from(schema.purchases).where(eq(schema.purchases.id, purchase.id)).limit(1);
+    return current;
   }
+}
+
+/**
+ * Record a completed capture and schedule the merchant payout (settlement window).
+ * Idempotent: only moves processing/failed purchases without a capture. Used by the charge path and the webhook.
+ */
+export async function markCaptured(purchaseId: string, ids: { orderId?: string | null; captureId: string }, how: "Charged" | "PayPal confirmed") {
+  const [p] = await db().select().from(schema.purchases).where(eq(schema.purchases.id, purchaseId)).limit(1);
+  if (!p) return null;
+  const user = await getUser(p.userId);
+  const holdSeconds = user?.isDemo ? env().DEMO_PAYOUT_HOLD_SECONDS : env().PAYOUT_HOLD_SECONDS;
+  const now = new Date();
+  const [updated] = await db()
+    .update(schema.purchases)
+    .set({
+      status: "captured",
+      paypalOrderId: ids.orderId ?? p.paypalOrderId,
+      paypalCaptureId: ids.captureId,
+      capturedAt: now,
+      failureReason: null,
+      payoutStatus: "scheduled",
+      payoutDueAt: new Date(now.getTime() + holdSeconds * 1000),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(schema.purchases.id, purchaseId),
+        inArray(schema.purchases.status, ["processing", "failed"]),
+        sql`${schema.purchases.paypalCaptureId} is null`,
+      ),
+    )
+    .returning();
+  if (!updated) return p; // already captured (or refunded): nothing to do
+  await logEvent(purchaseId, "captured", `${how} ${formatUsd(p.totalCents)} to the saved PayPal account.`, ids);
+  await logEvent(
+    purchaseId,
+    "payout_scheduled",
+    holdSeconds === 0
+      ? "Merchant payout is ready to send."
+      : `Merchant payout held for ${humanDuration(holdSeconds)} so a refund can still cancel it.`,
+  );
+  return updated;
 }
 
 async function fail(purchase: Purchase, reason: string, data?: unknown) {
@@ -309,6 +334,7 @@ export async function decidePurchase(opts: { userId: string; purchaseId: string;
 
   if (!opts.approve) {
     await logEvent(claimed.id, "declined", `You declined this purchase (${opts.via}).`);
+    await notifyPurchase(claimed);
     return claimed;
   }
   await logEvent(claimed.id, "approved", `You approved this purchase (${opts.via}).`);
@@ -338,12 +364,32 @@ export async function decidePurchase(opts: { userId: string; purchaseId: string;
   });
   if (recheck.blocked) {
     await logEvent(claimed.id, "rule_check", `Re-checked after approval: ${outcomeMessage(recheck.result)}`, recheck.result);
+    await notifyPurchase(recheck.blocked);
     return recheck.blocked;
   }
   await logEvent(claimed.id, "rule_check", "Re-checked after approval: all rules pass.", recheck.result);
   const charged = await chargePurchase(claimed);
   await notifyPurchase(charged);
   return charged;
+}
+
+/** Purchases stuck in "processing" with no PayPal confirmation after 15 minutes are failed (nothing captured). */
+export async function failStaleProcessing() {
+  const stale = await db()
+    .update(schema.purchases)
+    .set({ status: "failed", failureReason: "PayPal never confirmed the charge.", updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.purchases.status, "processing"),
+        sql`${schema.purchases.paypalCaptureId} is null`,
+        lt(schema.purchases.updatedAt, new Date(Date.now() - 15 * 60_000)),
+      ),
+    )
+    .returning();
+  for (const p of stale) {
+    await logEvent(p.id, "failed", "PayPal never confirmed the charge, so it was marked failed. If PayPal confirms later, it's corrected automatically.");
+    await notifyPurchase(p);
+  }
 }
 
 export async function expireStaleApprovals(userId?: string) {
@@ -357,8 +403,11 @@ export async function expireStaleApprovals(userId?: string) {
         userId ? eq(schema.purchases.userId, userId) : undefined,
       ),
     )
-    .returning({ id: schema.purchases.id });
-  for (const p of expired) await logEvent(p.id, "expired", "Nobody approved this within 24 hours, so it expired.");
+    .returning();
+  for (const p of expired) {
+    await logEvent(p.id, "expired", "Nobody approved this within 24 hours, so it expired.");
+    await notifyPurchase(p);
+  }
 }
 
 /**
@@ -466,4 +515,36 @@ function humanDuration(s: number) {
   if (s < 60) return `${s} seconds`;
   if (s < 3600) return `${Math.round(s / 60)} minutes`;
   return `${Math.round(s / 3600)} hours`;
+}
+
+/**
+ * A refund that happened outside Allowance (e.g. in the PayPal dashboard), reported by webhook.
+ * Same settlement rules as refundPurchase: cancel a held payout, otherwise record a clawback.
+ */
+export async function recordExternalRefund(captureId: string, refundId: string) {
+  const [p] = await db().select().from(schema.purchases).where(eq(schema.purchases.paypalCaptureId, captureId)).limit(1);
+  if (!p || p.status !== "captured") return p ?? null; // unknown, or already refunded by us
+  const [cancelled] = await db()
+    .update(schema.purchases)
+    .set({ payoutStatus: "cancelled", updatedAt: new Date() })
+    .where(and(eq(schema.purchases.id, p.id), eq(schema.purchases.payoutStatus, "scheduled")))
+    .returning({ id: schema.purchases.id });
+  const [updated] = await db()
+    .update(schema.purchases)
+    .set({ status: "refunded", paypalRefundId: refundId, updatedAt: new Date() })
+    .where(and(eq(schema.purchases.id, p.id), eq(schema.purchases.status, "captured")))
+    .returning();
+  if (!updated) return p;
+  await logEvent(p.id, "refunded", `PayPal reports a refund of ${formatUsd(p.totalCents)} made outside Allowance.`, { refundId });
+  if (cancelled) {
+    await logEvent(p.id, "payout_cancelled", "The merchant payout was still on hold, so it was cancelled.");
+  } else if (p.payoutStatus !== "cancelled" && p.payoutStatus !== "failed") {
+    const owed = p.payoutCents ?? p.totalCents;
+    await db()
+      .update(schema.merchants)
+      .set({ clawbackCents: sql`${schema.merchants.clawbackCents} + ${owed}` })
+      .where(eq(schema.merchants.id, p.merchantId));
+    await logEvent(p.id, "clawback", `The merchant was already paid, so ${formatUsd(owed)} will be deducted from their next payouts.`);
+  }
+  return updated;
 }
