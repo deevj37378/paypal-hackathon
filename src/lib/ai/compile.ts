@@ -22,7 +22,10 @@ const Draft = z.object({
   blockedCategories: z.array(z.string()).describe("categories that must never be bought"),
   blockedMerchants: z.array(z.string()).describe("merchant ids that must never be used"),
   trustedMerchants: z.array(z.string()).describe("merchant ids the owner explicitly trusts"),
-  requireApprovalForNewMerchants: z.boolean().describe("ask before buying from a merchant not bought from before"),
+  requireApprovalForNewMerchants: z
+    .boolean()
+    .nullable()
+    .describe("true/false only if the person says whether to ask before buying from new merchants; null if not mentioned"),
   assumptions: z.array(z.string()).describe("short notes on anything you assumed or normalised, in plain English"),
 });
 
@@ -59,7 +62,7 @@ export async function compileRules(userId: string, text: string): Promise<Compil
   if (!model) return { kind: "error", message: "AI rule translation isn't available right now. You can still edit your rules with the form." };
   const [vocab, current] = await Promise.all([storeVocabulary(), getActivePolicy(userId)]);
   const keepTrusted = current?.rules.trustedMerchants ?? [];
-  const cacheKey = hashKey("compile:v2", text.trim().toLowerCase(), JSON.stringify(vocab), keepTrusted.join(","));
+  const cacheKey = hashKey("compile:v3", text.trim().toLowerCase(), JSON.stringify(vocab), keepTrusted.join(","), String(current?.rules.requireApprovalForNewMerchants ?? true));
   const cached = await cacheGet<CompileResult>(cacheKey);
   if (cached) return cached;
 
@@ -103,7 +106,8 @@ export async function compileRules(userId: string, text: string): Promise<Compil
       blockedMerchants: [...new Set(draft.blockedMerchants.map(slug))].filter(Boolean),
       // Trusted merchants carry over unless the new text names some (they only skip the "new merchant" hold).
       trustedMerchants: draft.trustedMerchants.length ? [...new Set(draft.trustedMerchants.map(slug))].filter(Boolean) : keepTrusted,
-      requireApprovalForNewMerchants: draft.requireApprovalForNewMerchants,
+      // Safety settings the text doesn't mention keep their current value instead of silently turning off.
+      requireApprovalForNewMerchants: draft.requireApprovalForNewMerchants ?? current?.rules.requireApprovalForNewMerchants ?? true,
     };
     const parsed = PolicyRules.safeParse(candidate);
     if (!parsed.success) {
