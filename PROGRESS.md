@@ -1,6 +1,7 @@
 # Progress
 
 Repo: https://github.com/deevj37378/paypal-hackathon (public, MIT)
+Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push to main)
 
 ## Done
 - **M0 Setup** (Nov 3): Next.js 16, Neon + Drizzle, Zod env, PayPal REST client, health check, MIT license. Dev server on port 3100.
@@ -15,11 +16,13 @@ Repo: https://github.com/deevj37378/paypal-hackathon (public, MIT)
   - Real sessions (signed httpOnly cookie, per-browser accounts); `/spike` removed; same-origin checks on cookie-authenticated POSTs; `/api/health` hides error details in production.
   - Pages: landing, link PayPal, dashboard (spend meter, rules, approvals, agents with kill switch, purchases with refund, live refresh).
 
+- **Deployed** (Nov 3): Vercel project `allowance`, production env set (fresh SESSION_SECRET/CRON_SECRET, 15-min payout hold). Health ok; PayPal client token bound to the prod domain works; setup tokens created; daily cron backstop.
+
 ## Next
-- Deploy to Vercel for the Nov 5 Devpost draft.
 - **M3**: MCP server (`search_store`, `get_allowance_status`, `request_purchase`, `get_purchase_status`) over the same service; test with Claude Desktop + MCP Inspector.
 
 ## Known issues / decisions
+- **Dev and prod share one Neon database.** Fine for the hackathon; a Neon dev branch would isolate local testing (the payout worker in either environment processes due payouts for all users).
 - **Accounts are per-browser** (no email/password): zero cost, nothing to phish. "Try the demo" seeding comes in M6.
 - **Payouts with no cron:** Vercel Hobby cron runs daily, so payouts are mainly triggered by the open dashboard (every 4s) and right after capture when the hold is 0. Daily cron is the backstop.
 - **Charge timeouts:** if PayPal charges but our request times out, the purchase is marked failed even though money moved. The stable PayPal-Request-Id makes a retry safe; reconciliation via webhooks comes in M4.

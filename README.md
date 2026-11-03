@@ -2,6 +2,8 @@
 
 **Spending limits for AI agents, enforced by PayPal.**
 
+**Live demo (PayPal sandbox):** https://allowance-eight-eta.vercel.app
+
 AI agents can shop now, but nothing stops one from overspending or buying the wrong thing. Allowance lets you give any agent (Claude, ChatGPT, or your own) a limited, revocable PayPal spending permission. You write the rules in plain English. A deterministic checker enforces them on every purchase.
 
 > **Design principle: the AI never makes the final money decision.**
