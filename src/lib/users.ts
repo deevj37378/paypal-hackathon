@@ -1,4 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { env } from "@/lib/env";
 import { db, schema } from "@/db";
 import type { DbExecutor } from "@/db/tx";
 import { newId } from "@/lib/ids";
@@ -7,7 +8,9 @@ import { DEFAULT_POLICY, PolicyRules } from "@/lib/policy/schema";
 /** New account with the starter policy (editable in plain English in M5). */
 export async function createUser(opts: { isDemo?: boolean; name?: string } = {}) {
   const id = newId("usr");
-  await db().insert(schema.users).values({ id, name: opts.name ?? null, isDemo: opts.isDemo ? 1 : 0 });
+  await db()
+    .insert(schema.users)
+    .values({ id, name: opts.name ?? null, isDemo: opts.isDemo ? 1 : 0, expiresAt: opts.isDemo ? new Date(Date.now() + 24 * 3600_000) : null });
   await db().insert(schema.policies).values({
     id: newId("pol"),
     userId: id,
@@ -41,5 +44,31 @@ export async function getActiveVault(userId: string, ex: DbExecutor = db()) {
     .where(and(eq(schema.paypalVaults.userId, userId), eq(schema.paypalVaults.status, "active")))
     .orderBy(desc(schema.paypalVaults.createdAt))
     .limit(1);
-  return v ?? null;
+  if (v) return v;
+  // Judge demo mode: demo accounts without their own link use the shared, pre-linked sandbox buyer.
+  const demoToken = env().DEMO_PAYMENT_TOKEN_ID;
+  if (!demoToken) return null;
+  const [u] = await ex.select({ isDemo: schema.users.isDemo }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (!u?.isDemo) return null;
+  return {
+    id: "demo-vault",
+    userId,
+    paymentTokenId: demoToken,
+    paypalCustomerId: null,
+    payerEmail: env().DEMO_PAYER_EMAIL ?? "sandbox demo buyer",
+    status: "active" as const,
+    raw: null,
+    createdAt: new Date(0),
+  };
+}
+
+/** Delete expired demo accounts (purchases, agents, rules cascade). */
+export async function cleanupExpiredDemos(limit = 50) {
+  const rows = await db()
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(and(eq(schema.users.isDemo, 1), lt(schema.users.expiresAt, new Date())))
+    .limit(limit);
+  if (rows.length) await db().delete(schema.users).where(inArray(schema.users.id, rows.map((r) => r.id)));
+  return rows.length;
 }

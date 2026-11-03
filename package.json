@@ -14,7 +14,9 @@
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "test:db": "vitest run --config vitest.db.config.mts",
     "db:push:prod": "DRIZZLE_TARGET=prod drizzle-kit push",
-    "db:seed:prod": "node scripts/with-prod-db.mjs tsx --env-file=.env.local scripts/seed.ts"
+    "db:seed:prod": "node scripts/with-prod-db.mjs tsx --env-file=.env.local scripts/seed.ts",
+    "catalog:sync": "tsx --env-file=.env.local scripts/sync-catalog.ts",
+    "catalog:sync:prod": "node scripts/with-prod-db.mjs tsx --env-file=.env.local scripts/sync-catalog.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.111",

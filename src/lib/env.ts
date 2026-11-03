@@ -17,6 +17,9 @@ const schema = z.object({
   PAYOUT_HOLD_SECONDS: z.coerce.number().int().min(0).max(30 * 86400).default(900),
   /** Shorter window for demo accounts so judges see the payout land. */
   DEMO_PAYOUT_HOLD_SECONDS: z.coerce.number().int().min(0).max(86400).default(20),
+  /** Judge demo mode: one pre-linked sandbox buyer (PayPal vault payment token) shared by all demo accounts. */
+  DEMO_PAYMENT_TOKEN_ID: z.string().optional().transform((v) => (v ? v : undefined)),
+  DEMO_PAYER_EMAIL: z.string().optional(),
   /** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. */
   CRON_SECRET: z.string().optional().transform((v) => (v ? v : undefined)),
   AI_PROVIDER: z.enum(["google", "groq"]).default("google"),

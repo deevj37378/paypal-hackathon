@@ -76,8 +76,13 @@ export async function getBuiltinAgent(userId: string, opts: { create?: boolean }
     .where(and(eq(schema.agents.userId, userId), eq(schema.agents.keyPrefix, "builtin")))
     .orderBy(desc(schema.agents.createdAt))
     .limit(1);
-  if (existing && (existing.status === "active" || !opts.create)) return existing;
-  if (!opts.create) return null;
+  // A revoked built-in agent stays revoked (kill switch) until the owner explicitly re-enables it.
+  if (existing || !opts.create) return existing ?? null;
+  return createBuiltinAgent(userId);
+}
+
+/** Explicit owner action: create a fresh built-in agent identity (e.g. after revoking the old one). */
+export async function createBuiltinAgent(userId: string) {
   const agent = { id: newId("agt"), userId, name: "Built-in assistant", keyHash: hashKey(randomBytes(32).toString("hex")), keyPrefix: "builtin", keyLast4: null };
   const [row] = await db().insert(schema.agents).values(agent).returning();
   return row;

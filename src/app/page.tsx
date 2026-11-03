@@ -25,9 +25,20 @@ export default function Home() {
             </li>
           ))}
         </ol>
-        <form action="/api/session" method="post">
-          <button className={buttonVariants({ size: "lg" })}>Get started</button>
-        </form>
+        <div className="flex flex-wrap items-center gap-3">
+          <form action="/api/demo" method="post">
+            <button className={buttonVariants({ size: "lg" })}>Try the demo</button>
+          </form>
+          <form action="/api/session" method="post">
+            <button className={buttonVariants({ size: "lg", variant: "outline" })}>Start with my own PayPal</button>
+          </form>
+          <a href="/store" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+            Visit the agent-ready store
+          </a>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Demo: no sign-up and no PayPal login. It uses a sandbox test buyer, nothing real is charged, and it expires in 24 hours.
+        </p>
       </main>
     </>
   );

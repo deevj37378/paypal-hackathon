@@ -15,6 +15,7 @@ import { AgentsPanel } from "./agents-panel";
 import { AutoRefresh } from "./auto-refresh";
 import { ApprovalButtons, RefundButton } from "./purchase-actions";
 import { TelegramCard } from "./telegram-card";
+import { GuidedDemo } from "./guided-demo";
 import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
 import { telegramEnabled } from "@/lib/telegram";
 
@@ -36,6 +37,7 @@ async function DashboardContent() {
   const d = await getDashboard(userId);
   if (!d.user) redirect("/");
   const pending = d.purchases.filter((p) => p.purchase.status === "pending_approval");
+  const LATEST_BUILTIN = d.agents.find((a) => a.keyPrefix === "builtin")?.id;
 
   return (
     <>
@@ -48,6 +50,8 @@ async function DashboardContent() {
           </Link>
         </div>
       )}
+
+      <GuidedDemo isDemo={Boolean(d.user.isDemo)} telegram={Boolean(d.user.telegramChatId)} />
 
       <div className="grid gap-4 md:grid-cols-3">
         <SpendCard spent={d.spent} policy={d.policy?.rules ?? null} />
@@ -101,6 +105,7 @@ async function DashboardContent() {
           status: a.status,
           lastUsedAt: a.lastUsedAt?.toISOString() ?? null,
           builtIn: a.keyPrefix === "builtin",
+          isLatestBuiltIn: a.id === LATEST_BUILTIN,
         }))}
       />
 

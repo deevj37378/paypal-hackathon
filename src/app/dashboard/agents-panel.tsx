@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConnectInstructions } from "@/app/agents/connect-instructions";
 
-export type AgentRow = { id: string; name: string; keyLast4: string | null; status: string; lastUsedAt: string | null; builtIn?: boolean };
+export type AgentRow = { id: string; name: string; keyLast4: string | null; status: string; lastUsedAt: string | null; builtIn?: boolean; isLatestBuiltIn?: boolean };
 
 export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow[]; mcpUrl: string; full?: boolean }) {
   const router = useRouter();
@@ -123,6 +123,23 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
                   <Button variant="destructive" size="sm" disabled={pending} onClick={() => revoke(a.id, a.name)} aria-label={`Revoke ${a.name}`}>
                     Revoke
                   </Button>
+                ) : a.builtIn && a.isLatestBuiltIn ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">Revoked</Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() =>
+                        start(async () => {
+                          await fetch("/api/agents/builtin", { method: "POST" });
+                          router.refresh();
+                        })
+                      }
+                    >
+                      Turn back on
+                    </Button>
+                  </div>
                 ) : (
                   <Badge variant="outline">Revoked</Badge>
                 )}

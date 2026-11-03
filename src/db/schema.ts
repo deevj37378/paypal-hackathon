@@ -40,6 +40,8 @@ export const users = pgTable("users", {
   /** Telegram chat that receives approval requests (set via the one-time /start deep link). */
   telegramChatId: text("telegram_chat_id"),
   telegramUsername: text("telegram_username"),
+  /** Demo accounts expire and are deleted (cascade) by the cleanup job. */
+  expiresAt: ts("expires_at"),
   createdAt: createdAt(),
 });
 

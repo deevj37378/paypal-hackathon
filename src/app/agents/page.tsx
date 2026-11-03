@@ -30,6 +30,7 @@ async function AgentsContent() {
   if (!userId) redirect("/");
   const agents = await db().select().from(schema.agents).where(eq(schema.agents.userId, userId)).orderBy(desc(schema.agents.createdAt));
   const mcpUrl = `${env().APP_URL}/api/mcp`;
+  const LATEST_BUILTIN = agents.find((a) => a.keyPrefix === "builtin")?.id;
   return (
     <>
       <AgentsPanel
@@ -42,6 +43,7 @@ async function AgentsContent() {
           status: a.status,
           lastUsedAt: a.lastUsedAt?.toISOString() ?? null,
           builtIn: a.keyPrefix === "builtin",
+          isLatestBuiltIn: a.id === LATEST_BUILTIN,
         }))}
       />
       <Card>

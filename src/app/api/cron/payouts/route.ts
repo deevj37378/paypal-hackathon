@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/http";
 import { processDuePayouts } from "@/lib/purchases/payouts";
 import { pruneRateLimits } from "@/lib/rate-limit";
 import { expireStaleApprovals, failStaleProcessing } from "@/lib/purchases/service";
+import { cleanupExpiredDemos } from "@/lib/users";
 
 /** Vercel Cron backstop (Authorization: Bearer $CRON_SECRET). */
 export async function GET(req: Request) {
@@ -14,6 +15,7 @@ export async function GET(req: Request) {
     await expireStaleApprovals();
     await failStaleProcessing();
     await pruneRateLimits();
+    await cleanupExpiredDemos(200);
     return Response.json(await processDuePayouts({ limit: 25 }));
   } catch (e) {
     return errorResponse(e);
