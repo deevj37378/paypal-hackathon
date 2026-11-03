@@ -1,9 +1,14 @@
+import { assertSameOrigin, errorResponse } from "@/lib/http";
 import { createSetupToken } from "@/lib/paypal/vault";
-import { errorResponse } from "@/lib/http";
+import { requireUserId } from "@/lib/session";
+import { getActiveVault } from "@/lib/users";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const token = await createSetupToken();
+    assertSameOrigin(req);
+    const userId = await requireUserId();
+    const existing = await getActiveVault(userId);
+    const token = await createSetupToken({ paypalCustomerId: existing?.paypalCustomerId ?? undefined });
     return Response.json({ id: token.id, status: token.status });
   } catch (e) {
     return errorResponse(e);

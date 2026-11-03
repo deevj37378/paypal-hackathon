@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { env } from "@/lib/env";
+import { newId } from "@/lib/ids";
 import { PayPalError, paypalFetch } from "./client";
 
 /**
@@ -51,15 +51,17 @@ export async function createSetupToken(opts: { paypalCustomerId?: string } = {})
         paypal: {
           description: "Allowance: let your AI agents spend within the rules you set",
           permit_multiple_payment_tokens: false,
-          usage_pattern: "IMMEDIATE",
+          // Agents charge on demand, before goods ship, with amounts and timing that vary,
+          // under rules the buyer agreed to → UNSCHEDULED_PREPAID (Payment Tokens v3 usage_pattern enum).
+          usage_pattern: "UNSCHEDULED_PREPAID",
           usage_type: "MERCHANT",
           customer_type: "CONSUMER",
           experience_context: {
             shipping_preference: "NO_SHIPPING",
             brand_name: "Allowance",
             locale: "en-US",
-            return_url: `${APP_URL}/spike/vault?result=approved`,
-            cancel_url: `${APP_URL}/spike/vault?result=cancelled`,
+            return_url: `${APP_URL}/link-paypal?result=approved`,
+            cancel_url: `${APP_URL}/link-paypal?result=cancelled`,
           },
         },
       },
@@ -90,7 +92,7 @@ export async function savePaymentToken(userId: string, setupTokenId: string) {
   await db()
     .insert(schema.paypalVaults)
     .values({
-      id: randomUUID(),
+      id: newId("vlt"),
       userId,
       paymentTokenId: token.id,
       paypalCustomerId: token.customer?.id,
