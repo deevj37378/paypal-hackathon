@@ -15,10 +15,21 @@ export async function createAgent(userId: string, name: string) {
     userId,
     name,
     keyHash: hashKey(key),
-    keyPrefix: key.slice(0, PREFIX.length + 4),
+    keyPrefix: PREFIX,
+    keyLast4: key.slice(-4),
   };
   await db().insert(schema.agents).values(agent);
   return { agent, key }; // key is returned exactly once
+}
+
+/** Kill switch for every agent of this user at once. */
+export async function revokeAllAgents(userId: string) {
+  const rows = await db()
+    .update(schema.agents)
+    .set({ status: "revoked", revokedAt: new Date() })
+    .where(and(eq(schema.agents.userId, userId), eq(schema.agents.status, "active")))
+    .returning({ id: schema.agents.id });
+  return rows.length;
 }
 
 /** Kill switch: revoked keys stop working on the very next request. */

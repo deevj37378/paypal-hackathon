@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { SignOutButton, SiteHeader } from "@/components/app/site-header";
+import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDashboard, type Dashboard } from "@/lib/dashboard";
 import { formatUsd } from "@/lib/money";
 import type { PolicyRules } from "@/lib/policy/schema";
+import { env } from "@/lib/env";
 import { getSessionUserId } from "@/lib/session";
 import { AgentsPanel } from "./agents-panel";
 import { AutoRefresh } from "./auto-refresh";
@@ -18,16 +19,11 @@ export const metadata = { title: "Dashboard · Allowance" };
 
 export default function Page() {
   return (
-    <>
-      <SiteHeader>
-        <SignOutButton />
-      </SiteHeader>
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-8 sm:px-6">
-        <Suspense fallback={<DashboardSkeleton />}>
-          <DashboardContent />
-        </Suspense>
-      </main>
-    </>
+    <AppShell active="dashboard">
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent />
+      </Suspense>
+    </AppShell>
   );
 }
 
@@ -92,12 +88,14 @@ async function DashboardContent() {
       )}
 
       <AgentsPanel
+        mcpUrl={`${env().APP_URL}/api/mcp`}
         agents={d.agents.map((a) => ({
           id: a.id,
           name: a.name,
-          keyPrefix: a.keyPrefix,
+          keyLast4: a.keyLast4,
           status: a.status,
           lastUsedAt: a.lastUsedAt?.toISOString() ?? null,
+          builtIn: a.keyPrefix === "builtin",
         }))}
       />
 

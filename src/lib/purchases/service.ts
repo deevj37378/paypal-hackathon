@@ -28,7 +28,11 @@ export const RequestPurchaseInput = z
       .array(z.object({ product_id: z.string().trim().min(1).max(64), quantity: z.number().int().min(1).max(20) }).strict())
       .min(1)
       .max(20),
-    total: z.string().regex(/^\d{1,6}(\.\d{1,2})?$/, 'total must be a decimal string like "18.00"'),
+    // Accept "18.00" or 18 / 18.5 (LLM clients vary); always normalised to a 2-decimal string.
+    total: z
+      .union([z.string(), z.number().nonnegative().max(999_999)])
+      .transform((v) => (typeof v === "number" ? (Math.round(v * 100) / 100).toFixed(2) : v.trim()))
+      .pipe(z.string().regex(/^\d{1,6}(\.\d{1,2})?$/, 'total must be a decimal amount like "18.00"')),
     currency: z.string().length(3).toUpperCase(),
     reason: z.string().trim().max(500).optional(),
     idempotency_key: z.string().trim().min(8).max(100).optional(),

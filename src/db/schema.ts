@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { CheckItem, CheckResult } from "@/lib/policy/check";
 import type { PolicyRules } from "@/lib/policy/schema";
 
@@ -79,6 +79,8 @@ export const agents = pgTable(
     /** sha256 of the API key; the key itself is shown once and never stored. */
     keyHash: text("key_hash").notNull(),
     keyPrefix: text("key_prefix").notNull(),
+    /** Last 4 characters of the key, so the owner can tell keys apart after the one-time reveal. */
+    keyLast4: text("key_last4"),
     status: agentStatus("status").notNull().default("active"),
     lastUsedAt: ts("last_used_at"),
     revokedAt: ts("revoked_at"),
@@ -164,4 +166,15 @@ export const purchaseEvents = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("purchase_events_purchase_idx").on(t.purchaseId, t.createdAt)],
+);
+
+/** Fixed-window counters for free, DB-backed rate limiting (agents, AI endpoints, demo creation). */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").notNull(),
+    windowStart: ts("window_start").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
 );

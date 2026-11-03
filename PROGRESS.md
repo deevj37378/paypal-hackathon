@@ -21,8 +21,7 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
 - **Race fix** (Nov 3): check-and-reserve is atomic per user. `reservePurchase` runs in a Neon WebSocket transaction holding `pg_advisory_xact_lock(user)`; the pure checker is unchanged. `npm run test:db`: 5 parallel $30 vs a $100 limit → exactly 3 reserved, 2 blocked; concurrent same idempotency key → one purchase. Without the lock the test fails (5/5 reserved), so it really guards the bug.
 - **Neon dev branch**: `.env.local` DATABASE_URL = dev branch; live DB kept as PROD_DATABASE_URL (`npm run db:push:prod`, `db:seed:prod`). DB tests refuse to run against the live DB.
 
-## Next
-- **M3**: MCP server (`search_store`, `get_allowance_status`, `request_purchase`, `get_purchase_status`) over the same service; test with Claude Desktop + MCP Inspector.
+- **M3 MCP server** (Nov 4): `/api/mcp` (mcp-handler 2 / MCP SDK v2, Streamable HTTP, stateless) with `search_store`, `get_allowance_status`, `request_purchase`, `get_purchase_status` on the same purchase service as `/api/v1`. Bearer agent key checked at connect AND on every tool call (kill switch works mid-session). Results = structured data + one sentence; pending tells the agent to poll, blocked tells it not to retry. DB-backed per-agent rate limits (purchase 10/min, search/status 60/min). Verified with MCP Inspector CLI: coffee charged, replay → same purchase, book held, poll → waiting, mug blocked, bad input → readable error, revoked → refused. `/agents` page: key shown once then last 4 only, revoke / revoke all, Claude Desktop (mcp-remote) + Claude Code config with the key pre-filled.
 
 ## Known issues / decisions
 - **Dev and prod share one Neon database.** Fine for the hackathon; a Neon dev branch would isolate local testing (the payout worker in either environment processes due payouts for all users).

@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import { AgentAuthError } from "@/lib/agents";
 import { PayPalError } from "@/lib/paypal/client";
 import { PurchaseInputError } from "@/lib/purchases/service";
+import { RateLimitError } from "@/lib/rate-limit";
 import { UnauthorizedError } from "@/lib/session";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -22,6 +23,12 @@ export function errorResponse(e: unknown) {
   }
   if (e instanceof PurchaseInputError) {
     return Response.json({ error: "invalid_request", message: e.message }, { status: 400 });
+  }
+  if (e instanceof RateLimitError) {
+    return Response.json(
+      { error: "rate_limited", message: e.message },
+      { status: 429, headers: { "Retry-After": String(e.retryAfterSeconds) } },
+    );
   }
   if (e instanceof ForbiddenError) {
     return Response.json({ error: "forbidden", message: e.message }, { status: 403 });
