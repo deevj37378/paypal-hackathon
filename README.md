@@ -28,7 +28,7 @@ npm install
 cp .env.example .env.local   # fill in; every value is free and the comments say where to get it
 npm run db:push              # create tables in Neon
 npm run dev
-curl localhost:3000/api/health   # → {"db":"ok","paypal":"ok"}
+curl localhost:3100/api/health   # → {"db":"ok","paypal":"ok"}
 ```
 
 ## Sandbox test accounts
