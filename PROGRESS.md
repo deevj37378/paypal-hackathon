@@ -3,17 +3,26 @@
 Repo: https://github.com/deevj37378/paypal-hackathon (public, MIT)
 
 ## Done
-- **M0 Setup** (verified Nov 3): Next.js 16 + Tailwind + shadcn, Drizzle/Neon schema pushed, Zod env, PayPal REST client (token cache, idempotency, retries, debug_id), `/api/health` → `{"db":"ok","paypal":"ok"}`, MIT license, README skeleton. Dev server pinned to port 3100.
-- **M1 Vault spike** (verified Nov 3): **We're on Plan A (PayPal Vault).**
-  - Buyer linked PayPal once via JS SDK v6 save-payment flow (`/spike/vault`) → v3 setup token → payment token, stored server-side only.
-  - `npm run spike:charge` charged $18.00 with `vault_id` and **no buyer present**. The order came back `COMPLETED` immediately (no separate capture call needed). Then it paid $18.00 to the demo store via Payouts (`SUCCESS`) and refunded the capture (`COMPLETED`).
-  - Evidence (sandbox): order `1N9793644K545305J`, capture `7FY19435J0403821V` (now REFUNDED), payout batch `UAAMLBPB5P9EN` / item `S7XMZEEBRMHZC` (SUCCESS), refund `7EJ04581WS3795024`. Re-checked against the PayPal API.
+- **M0 Setup** (Nov 3): Next.js 16, Neon + Drizzle, Zod env, PayPal REST client, health check, MIT license. Dev server on port 3100.
+- **M1 Vault spike** (Nov 3): **Plan A (PayPal Vault) confirmed.** Vaulted buyer charged with no buyer present, payout to store, refund. Sandbox order `1N9793644K545305J`.
+- **M2 Rule checker + purchase flow** (Nov 3), verified end to end in sandbox:
+  - Deterministic checker `src/lib/policy/check.ts` + 26 unit tests (`npm test`). Strict Zod `PolicyRules`.
+  - Agent REST API `POST /api/v1/purchases`, `GET /api/v1/purchases/:id` with per-agent hashed keys. Store sets prices and categories; agent total must match.
+  - Demo story verified: $18 coffee → charged · $32 book → held → approved on dashboard → charged · mug → blocked (category) · $48 book → blocked (per-order) · new merchant → held → declined · wrong total → blocked · same idempotency key → same purchase, no second charge.
+  - Vault `usage_pattern: UNSCHEDULED_PREPAID`; orders send `stored_credential {MERCHANT, SUBSEQUENT, UNSCHEDULED_PREPAID}`. Both accepted by sandbox.
+  - Settlement window: refund inside the hold → payout cancelled; refund after payout → $32 clawback; next $16 payout fully offset (clawback left $16).
+  - Kill switch: revoked agent's next request → 401.
+  - Real sessions (signed httpOnly cookie, per-browser accounts); `/spike` removed; same-origin checks on cookie-authenticated POSTs; `/api/health` hides error details in production.
+  - Pages: landing, link PayPal, dashboard (spend meter, rules, approvals, agents with kill switch, purchases with refund, live refresh).
 
 ## Next
-- **M2**: deterministic rule checker (unit tested) + `request_purchase` end to end (approved → charge → payout; pending_approval; blocked), real sessions replacing the spike user.
+- Deploy to Vercel for the Nov 5 Devpost draft.
+- **M3**: MCP server (`search_store`, `get_allowance_status`, `request_purchase`, `get_purchase_status`) over the same service; test with Claude Desktop + MCP Inspector.
 
 ## Known issues / decisions
-- **Refund after payout:** refunding the buyer after the store was paid leaves the platform covering the amount. Decide in M4: hold payouts until approval/settlement window, or recover the refunded amount from the merchant's next payouts. Fine for the sandbox demo.
-- **Client token:** `domains[]` is only sent for non-localhost `APP_URL` (PayPal rejects `localhost`).
-- **PayPal plugin MCP:** the `get_order` tool fails with "Unsupported cache mode: default", so we verify through our own REST client instead.
-- npm 11 blocks esbuild's postinstall script. It's harmless: tsx and drizzle-kit work without it.
+- **Accounts are per-browser** (no email/password): zero cost, nothing to phish. "Try the demo" seeding comes in M6.
+- **Payouts with no cron:** Vercel Hobby cron runs daily, so payouts are mainly triggered by the open dashboard (every 4s) and right after capture when the hold is 0. Daily cron is the backstop.
+- **Charge timeouts:** if PayPal charges but our request times out, the purchase is marked failed even though money moved. The stable PayPal-Request-Id makes a retry safe; reconciliation via webhooks comes in M4.
+- **Payout status "sent"** is confirmed by polling on dashboard ticks until webhooks land (M4).
+- **PayPal plugin MCP** `get_order` fails ("Unsupported cache mode: default"); we verify through our own REST client.
+- npm 11 blocks esbuild's postinstall script. It's harmless.
