@@ -1,5 +1,7 @@
 # Progress
 
+Repo: https://github.com/deevj37378/paypal-hackathon (public, MIT)
+
 ## Done
 - **M0 Setup**: Next.js 16 + Tailwind + shadcn, Drizzle/Neon schema, Zod env, PayPal REST client (token cache, idempotency, retries, debug_id), `/api/health`, MIT license, README skeleton.
 
