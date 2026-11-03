@@ -10,6 +10,7 @@ import { formatUsd } from "@/lib/money";
 import { getSessionUserId } from "@/lib/session";
 import { ApprovalButtons, RefundButton } from "@/app/dashboard/purchase-actions";
 import { PURCHASE_STATUS, PAYOUT_STATUS } from "@/lib/purchases/labels";
+import { explainDecision } from "@/lib/ai/explain";
 
 export const metadata = { title: "Purchase · Allowance" };
 
@@ -67,6 +68,11 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
                 </li>
               ))}
             </ul>
+            {p.decision.outcome !== "approved" && (
+              <Suspense fallback={<p className="h-10 animate-pulse rounded-lg bg-muted/50" aria-label="Loading explanation" />}>
+                <Explanation purchase={p} />
+              </Suspense>
+            )}
             {p.reason && (
               <p>
                 <span className="text-muted-foreground">Agent&apos;s reason:</span> “{p.reason}”
@@ -131,6 +137,19 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
           </ul>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+async function Explanation({ purchase }: { purchase: Parameters<typeof explainDecision>[0] }) {
+  const { text, source } = await explainDecision(purchase);
+  return (
+    <div className="rounded-lg border bg-muted/40 p-3">
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {source === "ai" ? "In plain English (AI)" : "Why"}
+      </p>
+      <p className="mt-1">{text}</p>
+      {source === "ai" && <p className="mt-1 text-xs text-muted-foreground">Explanation only. The decision itself was made by the rule checker.</p>}
     </div>
   );
 }

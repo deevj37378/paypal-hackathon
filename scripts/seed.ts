@@ -19,10 +19,10 @@ const products = [
   { id: "book-pragmatic", merchantId: "demo-store", name: "The Pragmatic Programmer", category: "books", priceCents: 3200, description: "20th anniversary edition, hardcover." },
   { id: "book-atomic-habits", merchantId: "demo-store", name: "Atomic Habits", category: "books", priceCents: 1400, description: "Paperback." },
   { id: "book-dune", merchantId: "demo-store", name: "Dune", category: "books", priceCents: 1200, description: "Paperback." },
-  { id: "book-designing-data", merchantId: "demo-store", name: "Designing Data-Intensive Applications", category: "books", priceCents: 4800, description: "Hardcover, over the per-order limit." },
-  { id: "mug-ceramic", merchantId: "demo-store", name: "Ceramic Mug", category: "kitchen", priceCents: 1500, description: "Not coffee: shows a category block." },
+  { id: "book-designing-data", merchantId: "demo-store", name: "Designing Data-Intensive Applications", category: "books", priceCents: 4800, description: "Hardcover, the big one on distributed systems." },
+  { id: "mug-ceramic", merchantId: "demo-store", name: "Ceramic Mug", category: "kitchen", priceCents: 1500, description: "Stoneware, 12oz, dishwasher safe." },
   { id: "headphones-wireless", merchantId: "gadget-hub", name: "Wireless Headphones", category: "electronics", priceCents: 7900, description: "Noise cancelling." },
-  { id: "coffee-cold-brew-kit", merchantId: "gadget-hub", name: "Cold Brew Coffee Kit", category: "coffee", priceCents: 2400, description: "Coffee, but from a merchant you haven't used." },
+  { id: "coffee-cold-brew-kit", merchantId: "gadget-hub", name: "Cold Brew Coffee Kit", category: "coffee", priceCents: 2400, description: "Everything you need for cold brew at home." },
 ];
 
 async function main() {

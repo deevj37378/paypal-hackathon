@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { newId } from "@/lib/ids";
 
@@ -63,4 +63,30 @@ export async function authenticateAgent(authorization: string | null) {
     .where(eq(schema.agents.id, agent.id))
     .catch(() => {});
   return agent;
+}
+
+/**
+ * The built-in chat agent's identity. It has an agent row (so the kill switch, limits and audit trail
+ * apply exactly like any MCP agent) but no usable API key: its hash is of random bytes nobody holds.
+ */
+export async function getBuiltinAgent(userId: string, opts: { create?: boolean } = {}) {
+  const [existing] = await db()
+    .select()
+    .from(schema.agents)
+    .where(and(eq(schema.agents.userId, userId), eq(schema.agents.keyPrefix, "builtin")))
+    .orderBy(desc(schema.agents.createdAt))
+    .limit(1);
+  if (existing && (existing.status === "active" || !opts.create)) return existing;
+  if (!opts.create) return null;
+  const agent = { id: newId("agt"), userId, name: "Built-in assistant", keyHash: hashKey(randomBytes(32).toString("hex")), keyPrefix: "builtin", keyLast4: null };
+  const [row] = await db().insert(schema.agents).values(agent).returning();
+  return row;
+}
+
+/** Re-read an agent by id and refuse if revoked (used by the built-in agent on every tool call). */
+export async function requireActiveAgent(agentId: string) {
+  const [a] = await db().select().from(schema.agents).where(eq(schema.agents.id, agentId)).limit(1);
+  if (!a) throw new AgentAuthError("Unknown agent.");
+  if (a.status !== "active") throw new AgentAuthError("This agent's access was revoked by its owner.");
+  return a;
 }

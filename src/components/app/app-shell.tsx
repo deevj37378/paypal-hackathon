@@ -5,7 +5,9 @@ export type NavKey = "dashboard" | "agents" | "rules" | "chat" | "store";
 
 const NAV: { key: NavKey; href: string; label: string }[] = [
   { key: "dashboard", href: "/dashboard", label: "Dashboard" },
+  { key: "rules", href: "/rules", label: "Rules" },
   { key: "agents", href: "/agents", label: "Agents" },
+  { key: "chat", href: "/agent", label: "Try the agent" },
 ];
 
 /** Signed-in layout: header with primary navigation + centred content column. */

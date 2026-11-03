@@ -144,6 +144,8 @@ export const purchases = pgTable(
     payoutDueAt: ts("payout_due_at"),
     payoutCents: integer("payout_cents"),
     payoutBatchId: text("payout_batch_id"),
+    /** Plain-English AI explanation of a held/blocked decision (cached; the checker's reasons are the fallback). */
+    aiExplanation: text("ai_explanation"),
     /** Telegram approval message, edited in place once the purchase is decided. */
     telegramMessageId: text("telegram_message_id"),
     capturedAt: ts("captured_at"),
@@ -200,4 +202,11 @@ export const webhookEvents = pgTable("webhook_events", {
   purchaseId: text("purchase_id"),
   outcome: text("outcome"),
   receivedAt: createdAt(),
+});
+
+/** Cache for LLM outputs keyed by a hash of the input (rules compiler). */
+export const aiCache = pgTable("ai_cache", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  createdAt: createdAt(),
 });

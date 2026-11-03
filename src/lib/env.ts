@@ -22,6 +22,12 @@ const schema = z.object({
   AI_PROVIDER: z.enum(["google", "groq"]).default("google"),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
+  /** Model ids are configurable so a retired free-tier model never takes the app down. */
+  GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
+  GEMINI_FAST_MODEL: z.string().default("gemini-3.5-flash-lite"),
+  GROQ_MODEL: z.string().default("openai/gpt-oss-120b"),
+  /** Global daily cap on LLM calls across all users (protects the free quota from public judges). */
+  AI_DAILY_LIMIT: z.coerce.number().int().min(0).default(800),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 });

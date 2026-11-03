@@ -106,13 +106,14 @@ export async function requestPurchaseTool(agent: Agent, input: unknown) {
   await rateLimit(`agent:${agent.id}:purchase`, 10, 60, "purchase requests");
   const p = await requestPurchase(agent, input);
   const view = toAgentView(p);
+  const why = view.reasons.map((r) => r.replace(/\.$/, "")).join("; ");
   const summary =
     view.status === "approved"
       ? `Approved and paid: ${formatUsd(p.totalCents)} at ${p.merchantId}. Purchase ${p.id}.`
       : view.status === "pending_approval"
-        ? `Held for the owner's approval (${view.reasons.join(" ")}). Tell the user it's waiting for their OK, then call get_purchase_status with purchase_id "${p.id}" to check back. Do not retry the purchase.`
+        ? `Held for the owner's approval (${why}). Tell the user it's waiting for their OK, then call get_purchase_status with purchase_id "${p.id}" to check back. Do not retry the purchase.`
         : view.status === "blocked"
-          ? `Blocked by the owner's rules: ${view.reasons.join(" ")} Do not retry the same purchase; tell the user why.`
+          ? `Blocked by the owner's rules: ${why}. Do not retry the same purchase; tell the user why.`
           : view.message;
   return { summary, data: view } satisfies ToolResult<unknown>;
 }
