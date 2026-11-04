@@ -29,6 +29,8 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
 - **Live test by Deev** (Nov 5): Telegram connect, Claude Desktop over MCP, coffee paid / book held, Telegram Approve → "Paid $32.00": all passed.
 - **M7** (Nov 5): font fix (Geist), calm fintech palette, redesigned landing, dashboard order + mobile purchase cards, purchase stage stepper, deterministic dates (hydration fix), explanation voice. Telegram sends purchases already waiting for approval when a chat connects. Screenshots of all pages at 1440/768/390 in real Chrome: no overflow, no console errors, no unlabeled inputs. README rewritten (judge path, mermaid architecture, PayPal APIs, AI usage, setup, limitations); `docs/DEVPOST.md`; `docs/VIDEO.md`.
 
+- **Final live run-through** (Nov 5, real Chrome 156): 18/18 checks: demo, coffee paid, book held → approved → paid, mug blocked with reason, new store held, store payout paid after the demo hold, inline refund, purchase stepper + AI explanation, rules translate (kept $40 cap) + activate, agent chat purchase, revoke → refused → turn back on, store/merchant/feed. Live screenshots at 1440/768/390 for 10 pages: no overflow, no console errors, no unlabeled inputs. Smoke test incl. MCP passes.
+
 ## Next
 - Deev: record the video (docs/VIDEO.md), paste docs/DEVPOST.md into Devpost, add the sandbox buyer login to Devpost's private testing instructions, submit.
 
