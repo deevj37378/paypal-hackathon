@@ -23,6 +23,13 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
 
 - **M3 MCP server** (Nov 4): `/api/mcp` (mcp-handler 2 / MCP SDK v2, Streamable HTTP, stateless) with `search_store`, `get_allowance_status`, `request_purchase`, `get_purchase_status` on the same purchase service as `/api/v1`. Bearer agent key checked at connect AND on every tool call (kill switch works mid-session). Results = structured data + one sentence; pending tells the agent to poll, blocked tells it not to retry. DB-backed per-agent rate limits (purchase 10/min, search/status 60/min). Verified with MCP Inspector CLI: coffee charged, replay → same purchase, book held, poll → waiting, mug blocked, bad input → readable error, revoked → refused. `/agents` page: key shown once then last 4 only, revoke / revoke all, Claude Desktop (mcp-remote) + Claude Code config with the key pre-filled.
 
+- **Review fixes** (Nov 5): (1) `/agent` crash in Chrome fixed: the useEffect returned `scrollIntoView()`'s Promise, which React called as cleanup. Verified in real Chrome 156 on the live site: budget question + coffee/book purchase, zero page or console errors. (2) Guided-demo cards show each scenario's live purchase status (approve/decline/refund reflected) with "Run again". (3) Replaced built-in agent identities hidden; built-in agent stamps last used. (4) Rules compiler keeps per-order cap, approval threshold, allowed/blocked lists and monthly limit unless the text explicitly changes them, and lists what it kept. Verified with Gemini: "$200 a month, coffee, books and kitchen, ask me over $30" keeps the $40 cap; "no per-order limit" removes it. (5) Rule cards show merchant names; MCP says "Invalid API key"; inline refund confirm.
+- **Telegram connect**: t.me is blocked on some networks, so the card also offers a `tg://` app link and a copyable `/start <code>`. Our webhook side verified with a signed /start update on live; your real-device connection is still unconfirmed.
+
+## Next
+- M7: design pass (incl. the app font falling back to a serif: Geist isn't applied), README, docs/DEVPOST.md, docs/VIDEO.md, final live run-through.
+- Your checks: Telegram connect + tap on a real device; Claude Desktop test.
+
 ## Known issues / decisions
 - **Dev and prod share one Neon database.** Fine for the hackathon; a Neon dev branch would isolate local testing (the payout worker in either environment processes due payouts for all users).
 - **Accounts are per-browser** (no email/password): zero cost, nothing to phish. "Try the demo" seeding comes in M6.
