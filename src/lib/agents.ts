@@ -56,12 +56,7 @@ export async function authenticateAgent(authorization: string | null) {
   const [agent] = await db().select().from(schema.agents).where(eq(schema.agents.keyHash, hashKey(key))).limit(1);
   if (!agent) throw new AgentAuthError("Unknown API key.");
   if (agent.status !== "active") throw new AgentAuthError("This agent's access was revoked by its owner.");
-  // Fire-and-forget usage stamp; failure must not block the request.
-  db()
-    .update(schema.agents)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(schema.agents.id, agent.id))
-    .catch(() => {});
+  touchAgent(agent.id);
   return agent;
 }
 
@@ -93,5 +88,15 @@ export async function requireActiveAgent(agentId: string) {
   const [a] = await db().select().from(schema.agents).where(eq(schema.agents.id, agentId)).limit(1);
   if (!a) throw new AgentAuthError("Unknown agent.");
   if (a.status !== "active") throw new AgentAuthError("This agent's access was revoked by its owner.");
+  touchAgent(a.id);
   return a;
+}
+
+/** Fire-and-forget "last used" stamp; a failure must never block the request. */
+export function touchAgent(agentId: string) {
+  db()
+    .update(schema.agents)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(schema.agents.id, agentId))
+    .catch(() => {});
 }

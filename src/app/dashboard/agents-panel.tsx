@@ -18,7 +18,9 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const active = agents.filter((a) => a.status === "active");
+  // Older built-in identities (replaced via "Turn back on") are history, not agents: hide them.
+  const visible = agents.filter((a) => !a.builtIn || a.isLatestBuiltIn);
+  const active = visible.filter((a) => a.status === "active");
 
   const create = () =>
     start(async () => {
@@ -100,14 +102,14 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
           </div>
         )}
 
-        {agents.length === 0 ? (
+        {visible.length === 0 ? (
           <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             No agents yet.{" "}
             {full ? "Create a key above to connect one." : <Link href="/agents" className="underline">Connect your first agent</Link>}
           </div>
         ) : (
           <ul className="divide-y rounded-lg border">
-            {agents.map((a) => (
+            {visible.map((a) => (
               <li key={a.id} className="flex items-center justify-between gap-3 p-3 text-sm">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 truncate font-medium">

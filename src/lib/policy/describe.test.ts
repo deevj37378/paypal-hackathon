@@ -15,6 +15,10 @@ describe("rule cards", () => {
     expect(d.filter((c) => c.changed).map((c) => c.id)).toEqual(["monthlyLimitCents"]);
     expect(d.find((c) => c.id === "monthlyLimitCents")?.before).toBe("$150.00 per month");
   });
+  it("shows merchant names instead of ids", () => {
+    const card = ruleCards(DEFAULT_POLICY, { "demo-store": "Bean & Page" }).find((c) => c.id === "merchants");
+    expect(card?.value).toBe("Trusted: Bean & Page");
+  });
   it("everything is new when there are no current rules", () => {
     expect(diffRules(null, DEFAULT_POLICY).every((c) => c.changed)).toBe(true);
   });

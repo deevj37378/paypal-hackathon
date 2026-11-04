@@ -15,7 +15,8 @@ import { AgentsPanel } from "./agents-panel";
 import { AutoRefresh } from "./auto-refresh";
 import { ApprovalButtons, RefundButton } from "./purchase-actions";
 import { TelegramCard } from "./telegram-card";
-import { GuidedDemo } from "./guided-demo";
+import { GuidedDemo, type ScenarioState } from "./guided-demo";
+import { DEMO_SCENARIOS, type DemoScenario } from "@/lib/demo";
 import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
 import { telegramEnabled } from "@/lib/telegram";
 
@@ -38,6 +39,21 @@ async function DashboardContent() {
   if (!d.user) redirect("/");
   const pending = d.purchases.filter((p) => p.purchase.status === "pending_approval");
   const LATEST_BUILTIN = d.agents.find((a) => a.keyPrefix === "builtin")?.id;
+  // Live state of each guided-demo step: the latest purchase the built-in agent made for that scenario.
+  const builtinIds = new Set(d.agents.filter((a) => a.keyPrefix === "builtin").map((a) => a.id));
+  const scenarioState = Object.fromEntries(
+    (Object.keys(DEMO_SCENARIOS) as DemoScenario[]).map((key) => {
+      const sc = DEMO_SCENARIOS[key];
+      const hit = d.purchases.find(
+        ({ purchase: p }) =>
+          p.agentId !== null &&
+          builtinIds.has(p.agentId) &&
+          p.merchantId === sc.input.merchant_id &&
+          p.items[0]?.productId === sc.input.items[0].product_id,
+      )?.purchase;
+      return [key, hit ? { purchaseId: hit.id, status: hit.status, payoutStatus: hit.payoutStatus, reason: hit.decision.reasons[0] ?? null } : null];
+    }),
+  ) as Record<DemoScenario, ScenarioState | null>;
 
   return (
     <>
@@ -51,7 +67,7 @@ async function DashboardContent() {
         </div>
       )}
 
-      <GuidedDemo isDemo={Boolean(d.user.isDemo)} telegram={Boolean(d.user.telegramChatId)} />
+      <GuidedDemo isDemo={Boolean(d.user.isDemo)} telegram={Boolean(d.user.telegramChatId)} state={scenarioState} />
 
       <div className="grid gap-4 md:grid-cols-3">
         <SpendCard spent={d.spent} policy={d.policy?.rules ?? null} />
@@ -228,7 +244,7 @@ function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
                         <p className="mt-1 text-xs text-muted-foreground">{PAYOUT_STATUS[p.payoutStatus]}</p>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{p.status === "captured" && <RefundButton purchaseId={p.id} />}</TableCell>
+                    <TableCell className="text-right">{p.status === "captured" && <RefundButton purchaseId={p.id} amount={formatUsd(p.totalCents)} />}</TableCell>
                   </TableRow>
                 );
               })}

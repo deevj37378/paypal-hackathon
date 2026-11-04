@@ -30,11 +30,17 @@ export default function Page() {
 async function RulesContent() {
   const userId = await getSessionUserId();
   if (!userId) redirect("/");
-  const [policy, cats] = await Promise.all([getActivePolicy(userId), db().selectDistinct({ c: schema.products.category }).from(schema.products)]);
+  const [policy, cats, merchants] = await Promise.all([
+    getActivePolicy(userId),
+    db().selectDistinct({ c: schema.products.category }).from(schema.products),
+    db().select({ id: schema.merchants.id, name: schema.merchants.name }).from(schema.merchants),
+  ]);
+  const names = Object.fromEntries(merchants.map((m) => [m.id, m.name]));
   return (
     <RulesEditor
       current={policy?.rules ?? null}
-      currentCards={policy ? ruleCards(policy.rules) : []}
+      currentCards={policy ? ruleCards(policy.rules, names) : []}
+      merchantNames={names}
       sourceText={policy?.sourceText ?? ""}
       aiAvailable={aiConfigured()}
       categories={cats.map((c) => c.c).filter((c) => c !== "test").sort()}

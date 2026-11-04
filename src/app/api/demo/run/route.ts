@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getBuiltinAgent } from "@/lib/agents";
+import { getBuiltinAgent, touchAgent } from "@/lib/agents";
 import { requestPurchaseTool } from "@/lib/agent/tools";
 import { DEMO_SCENARIOS } from "@/lib/demo";
 import { assertSameOrigin, errorResponse } from "@/lib/http";
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     if (!agent || agent.status !== "active") {
       return Response.json({ error: "revoked", message: "You revoked the built-in agent (kill switch), so it can't buy anything." }, { status: 403 });
     }
+    touchAgent(agent.id);
     const { summary, data } = await requestPurchaseTool(agent, { ...DEMO_SCENARIOS[scenario].input, idempotency_key: crypto.randomUUID() });
     return Response.json({ summary, ...data });
   } catch (e) {

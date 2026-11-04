@@ -26,6 +26,7 @@ export function RulesEditor(props: {
   sourceText: string;
   aiAvailable: boolean;
   categories: string[];
+  merchantNames: Record<string, string>;
 }) {
   const router = useRouter();
   const [text, setText] = useState(props.sourceText);
@@ -38,7 +39,8 @@ export function RulesEditor(props: {
   const [showForm, setShowForm] = useState(!props.aiAvailable);
 
   const current = props.current;
-  const cards: Card2[] = useMemo(() => (proposal ? diffRules(current, proposal.rules) : []), [proposal, current]);
+  const names = props.merchantNames;
+  const cards: Card2[] = useMemo(() => (proposal ? diffRules(current, proposal.rules, names) : []), [proposal, current, names]);
 
   const translate = (input: string) =>
     start(async () => {

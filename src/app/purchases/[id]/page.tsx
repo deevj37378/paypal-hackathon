@@ -87,7 +87,7 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
             {p.status === "captured" && (
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <span className="text-muted-foreground">{PAYOUT_STATUS[p.payoutStatus] || "Paid"}</span>
-                <RefundButton purchaseId={p.id} />
+                <RefundButton purchaseId={p.id} amount={formatUsd(p.totalCents)} />
               </div>
             )}
             {p.failureReason && p.status === "failed" && <p className="text-destructive">{p.failureReason}</p>}

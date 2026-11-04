@@ -114,4 +114,21 @@ const authed = withMcpAuth(
   { required: true },
 );
 
-export { authed as GET, authed as POST, authed as DELETE };
+/** A key that is present but unknown gets a clear "Invalid API key" (mcp-handler's default says "No authorization provided"). */
+async function route(req: Request) {
+  const token = req.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (token) {
+    const known =
+      token.startsWith("alw_sk_") &&
+      (await db().select({ id: schema.agents.id }).from(schema.agents).where(eq(schema.agents.keyHash, hashKey(token))).limit(1)).length > 0;
+    if (!known) {
+      return Response.json(
+        { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Invalid API key. Create one on the Allowance Agents page." } },
+        { status: 401, headers: { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="Invalid API key"' } },
+      );
+    }
+  }
+  return authed(req);
+}
+
+export { route as GET, route as POST, route as DELETE };

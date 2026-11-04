@@ -30,7 +30,10 @@ export function AgentChat({ available, revoked, paypalLinked }: { available: boo
   const { messages, sendMessage, status, error, stop } = useChat({ transport: new DefaultChatTransport({ api: "/api/agent/chat" }) });
   const busy = status === "submitted" || status === "streaming";
   const bottom = useRef<HTMLDivElement>(null);
-  useEffect(() => bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [messages]);
+  // Block body: Chrome's scrollIntoView can return a Promise, which React would call as the effect cleanup.
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
 
   if (!available || revoked) {
     return (

@@ -6,7 +6,9 @@ export type RuleCard = { id: keyof PolicyRules | "categories" | "merchants"; tit
 
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
-export function ruleCards(r: PolicyRules): RuleCard[] {
+/** `names` maps merchant ids to display names ("demo-store" → "Bean & Page"). */
+export function ruleCards(r: PolicyRules, names: Record<string, string> = {}): RuleCard[] {
+  const m = (ids: string[]) => list(ids.map((id) => names[id] ?? id));
   return [
     { id: "monthlyLimitCents", title: "Monthly allowance", value: `${formatUsd(r.monthlyLimitCents)} per month`, kind: "limit" },
     {
@@ -40,8 +42,8 @@ export function ruleCards(r: PolicyRules): RuleCard[] {
       title: "Merchants",
       value:
         [
-          r.trustedMerchants.length ? `Trusted: ${list(r.trustedMerchants)}` : "",
-          r.blockedMerchants.length ? `Blocked: ${list(r.blockedMerchants)}` : "",
+          r.trustedMerchants.length ? `Trusted: ${m(r.trustedMerchants)}` : "",
+          r.blockedMerchants.length ? `Blocked: ${m(r.blockedMerchants)}` : "",
         ]
           .filter(Boolean)
           .join(" · ") || "No merchant lists",
@@ -51,7 +53,7 @@ export function ruleCards(r: PolicyRules): RuleCard[] {
 }
 
 /** Which cards change between the current and proposed rules (for highlighting before confirm). */
-export function diffRules(current: PolicyRules | null, next: PolicyRules) {
-  const before = new Map((current ? ruleCards(current) : []).map((c) => [c.id, c.value]));
-  return ruleCards(next).map((c) => ({ ...c, before: before.get(c.id) ?? null, changed: before.get(c.id) !== c.value }));
+export function diffRules(current: PolicyRules | null, next: PolicyRules, names: Record<string, string> = {}) {
+  const before = new Map((current ? ruleCards(current, names) : []).map((c) => [c.id, c.value]));
+  return ruleCards(next, names).map((c) => ({ ...c, before: before.get(c.id) ?? null, changed: before.get(c.id) !== c.value }));
 }
