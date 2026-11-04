@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-export function SiteHeader({ children }: { children?: React.ReactNode }) {
+export function SiteHeader({ children, wide = false }: { children?: React.ReactNode; wide?: boolean }) {
   return (
     <header className="border-b bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
+      <div className={`mx-auto flex h-14 w-full items-center justify-between px-4 sm:px-6 ${wide ? "max-w-6xl" : "max-w-5xl"}`}>
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <span aria-hidden className="grid size-6 place-items-center rounded-md bg-primary text-xs text-primary-foreground">
             A

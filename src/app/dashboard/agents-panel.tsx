@@ -9,6 +9,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConnectInstructions } from "@/app/agents/connect-instructions";
+import { formatWhen } from "@/lib/format";
 
 export type AgentRow = { id: string; name: string; keyLast4: string | null; status: string; lastUsedAt: string | null; builtIn?: boolean; isLatestBuiltIn?: boolean };
 
@@ -118,7 +119,7 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {a.builtIn ? "Runs inside Allowance" : <>Key ending <code className="font-mono">…{a.keyLast4 ?? "????"}</code></>} ·{" "}
-                    {a.lastUsedAt ? `last used ${new Date(a.lastUsedAt).toLocaleString()}` : "never used"}
+                    {a.lastUsedAt ? `last used ${formatWhen(a.lastUsedAt)}` : "never used"}
                   </p>
                 </div>
                 {a.status === "active" ? (

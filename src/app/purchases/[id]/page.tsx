@@ -6,11 +6,13 @@ import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { db, schema } from "@/db";
+import { formatWhen } from "@/lib/format";
 import { formatUsd } from "@/lib/money";
 import { getSessionUserId } from "@/lib/session";
 import { ApprovalButtons, RefundButton } from "@/app/dashboard/purchase-actions";
 import { PURCHASE_STATUS, PAYOUT_STATUS } from "@/lib/purchases/labels";
 import { explainDecision } from "@/lib/ai/explain";
+import { StageStepper, stagesFor } from "./stage-stepper";
 
 export const metadata = { title: "Purchase · Allowance" };
 
@@ -57,6 +59,9 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
+            <div className="rounded-lg border bg-muted/30 px-2 py-3">
+              <StageStepper stages={stagesFor(p)} />
+            </div>
             <ul className="divide-y rounded-lg border">
               {p.items.map((i) => (
                 <li key={i.productId} className="flex justify-between gap-3 p-3">
@@ -105,7 +110,7 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
                   <span aria-hidden className="absolute top-1.5 -left-[25px] size-2.5 rounded-full border-2 border-background bg-primary" />
                   <p className="text-sm">{e.message}</p>
                   <p className="text-xs text-muted-foreground">
-                    {e.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium", timeZone: "UTC" })} UTC
+                    {formatWhen(e.createdAt)}
                   </p>
                 </li>
               ))}

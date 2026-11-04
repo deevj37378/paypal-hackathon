@@ -10,6 +10,7 @@ import { getDashboard, type Dashboard } from "@/lib/dashboard";
 import { formatUsd } from "@/lib/money";
 import type { PolicyRules } from "@/lib/policy/schema";
 import { env } from "@/lib/env";
+import { formatWhen } from "@/lib/format";
 import { getSessionUserId } from "@/lib/session";
 import { AgentsPanel } from "./agents-panel";
 import { AutoRefresh } from "./auto-refresh";
@@ -58,6 +59,17 @@ async function DashboardContent() {
   return (
     <>
       <AutoRefresh />
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">What your agents asked for, what your rules decided, and where the money went.</p>
+        </div>
+        {d.user.isDemo === 1 && d.user.expiresAt && (
+          <p className="text-xs text-muted-foreground">
+            Demo account · sandbox only · expires {formatWhen(d.user.expiresAt)}
+          </p>
+        )}
+      </div>
       {!d.vault && (
         <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
           <p>Link PayPal so approved purchases can be paid. Until then, every request is blocked.</p>
@@ -66,25 +78,6 @@ async function DashboardContent() {
           </Link>
         </div>
       )}
-
-      <GuidedDemo isDemo={Boolean(d.user.isDemo)} telegram={Boolean(d.user.telegramChatId)} state={scenarioState} />
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <SpendCard spent={d.spent} policy={d.policy?.rules ?? null} />
-        <RulesCard policy={d.policy?.rules ?? null} />
-        <Card>
-          <CardHeader>
-            <CardDescription>Paying with</CardDescription>
-            <CardTitle className="truncate text-base">{d.vault?.payerEmail ?? "Not linked"}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {d.vault ? "PayPal (saved with your consent)" : "Link PayPal to start."}{" "}
-            <Link href="/link-paypal" className="underline">
-              {d.vault ? "Change" : "Link"}
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
 
       {pending.length > 0 && (
         <Card className="border-amber-300">
@@ -110,22 +103,41 @@ async function DashboardContent() {
         </Card>
       )}
 
-      <TelegramCard connected={Boolean(d.user.telegramChatId)} username={d.user.telegramUsername} enabled={telegramEnabled()} />
-
-      <AgentsPanel
-        mcpUrl={`${env().APP_URL}/api/mcp`}
-        agents={d.agents.map((a) => ({
-          id: a.id,
-          name: a.name,
-          keyLast4: a.keyLast4,
-          status: a.status,
-          lastUsedAt: a.lastUsedAt?.toISOString() ?? null,
-          builtIn: a.keyPrefix === "builtin",
-          isLatestBuiltIn: a.id === LATEST_BUILTIN,
-        }))}
-      />
+      <GuidedDemo isDemo={Boolean(d.user.isDemo)} telegram={Boolean(d.user.telegramChatId)} state={scenarioState} />
+      <div className="grid gap-4 md:grid-cols-3">
+        <SpendCard spent={d.spent} policy={d.policy?.rules ?? null} />
+        <RulesCard policy={d.policy?.rules ?? null} />
+        <Card>
+          <CardHeader>
+            <CardDescription>Paying with</CardDescription>
+            <CardTitle className="truncate text-base">{d.vault?.payerEmail ?? "Not linked"}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {d.vault ? "PayPal (saved with your consent)" : "Link PayPal to start."}{" "}
+            <Link href="/link-paypal" className="underline">
+              {d.vault ? "Change" : "Link"}
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
 
       <PurchasesCard purchases={d.purchases} />
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_22rem]">
+        <AgentsPanel
+          mcpUrl={`${env().APP_URL}/api/mcp`}
+          agents={d.agents.map((a) => ({
+            id: a.id,
+            name: a.name,
+            keyLast4: a.keyLast4,
+            status: a.status,
+            lastUsedAt: a.lastUsedAt?.toISOString() ?? null,
+            builtIn: a.keyPrefix === "builtin",
+            isLatestBuiltIn: a.id === LATEST_BUILTIN,
+          }))}
+        />
+
+        <TelegramCard connected={Boolean(d.user.telegramChatId)} username={d.user.telegramUsername} enabled={telegramEnabled()} />
+      </div>
     </>
   );
 }
@@ -208,6 +220,39 @@ function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
             No purchases yet. Create an agent key above and let your agent shop.
           </p>
         ) : (
+          <>
+            {/* Phones: stacked cards (a 5-column table doesn't fit 390px). */}
+            <ul className="divide-y rounded-lg border sm:hidden">
+              {purchases.map(({ purchase: p, agentName, merchantName }) => {
+                const s = PURCHASE_STATUS[p.status] ?? { label: p.status, className: "" };
+                return (
+                  <li key={p.id} className="space-y-1.5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <Link href={`/purchases/${p.id}`} className="min-w-0 font-medium hover:underline">
+                        {p.items.map((i) => i.name).join(", ")}
+                      </Link>
+                      <span className="shrink-0 tabular-nums">{formatUsd(p.totalCents)}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={s.className}>{s.label}</Badge>
+                      {PAYOUT_STATUS[p.payoutStatus] && p.status !== "refunded" && (
+                        <span className="text-xs text-muted-foreground">{PAYOUT_STATUS[p.payoutStatus]}</span>
+                      )}
+                    </div>
+                    {(p.status === "blocked" || p.status === "failed") && (
+                      <p className="text-xs text-muted-foreground">{p.failureReason ?? p.decision.reasons[0]}</p>
+                    )}
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {agentName ?? "Agent"} · {merchantName} · {formatWhen(p.createdAt)}
+                      </span>
+                      {p.status === "captured" && <RefundButton purchaseId={p.id} amount={formatUsd(p.totalCents)} />}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden sm:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -225,7 +270,7 @@ function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                      {p.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC
+                      {formatWhen(p.createdAt)}
                     </TableCell>
                     <TableCell className="max-w-64">
                       <Link href={`/purchases/${p.id}`} className="block truncate font-medium hover:underline">
@@ -250,6 +295,8 @@ function PurchasesCard({ purchases }: { purchases: Dashboard["purchases"] }) {
               })}
             </TableBody>
           </Table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
