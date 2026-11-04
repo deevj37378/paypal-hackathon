@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConnectInstructions } from "@/app/agents/connect-instructions";
 import { formatWhen } from "@/lib/format";
+import { ConfirmButton } from "@/components/app/confirm-button";
 
 export type AgentRow = { id: string; name: string; keyLast4: string | null; status: string; lastUsedAt: string | null; builtIn?: boolean; isLatestBuiltIn?: boolean };
 
@@ -37,9 +38,8 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
       router.refresh();
     });
 
-  const revoke = (id: string, agentName: string) =>
+  const revoke = (id: string) =>
     start(async () => {
-      if (!confirm(`Revoke ${agentName}? Its key stops working immediately.`)) return;
       const res = await fetch(`/api/agents/${id}/revoke`, { method: "POST" });
       if (!res.ok) setError("Couldn't revoke. Try again.");
       router.refresh();
@@ -47,7 +47,6 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
 
   const revokeAll = () =>
     start(async () => {
-      if (!confirm("Revoke ALL agents? Every key stops working immediately.")) return;
       const res = await fetch("/api/agents/revoke-all", { method: "POST" });
       if (!res.ok) setError("Couldn't revoke. Try again.");
       setNewKey(null);
@@ -61,9 +60,7 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
         <CardDescription>Each agent gets its own key. Revoke one and it loses access on its very next request.</CardDescription>
         {active.length > 0 && (
           <CardAction>
-            <Button variant="destructive" size="sm" disabled={pending} onClick={revokeAll}>
-              Revoke all
-            </Button>
+            <ConfirmButton label="Revoke all" confirmLabel="Yes, revoke all" question="Every key stops working now." onConfirm={revokeAll} disabled={pending} />
           </CardAction>
         )}
       </CardHeader>
@@ -123,9 +120,14 @@ export function AgentsPanel({ agents, mcpUrl, full = false }: { agents: AgentRow
                   </p>
                 </div>
                 {a.status === "active" ? (
-                  <Button variant="destructive" size="sm" disabled={pending} onClick={() => revoke(a.id, a.name)} aria-label={`Revoke ${a.name}`}>
-                    Revoke
-                  </Button>
+                  <ConfirmButton
+                    label="Revoke"
+                    ariaLabel={`Revoke ${a.name}`}
+                    confirmLabel="Yes, revoke"
+                    question="Its key stops working now."
+                    onConfirm={() => revoke(a.id)}
+                    disabled={pending}
+                  />
                 ) : a.builtIn && a.isLatestBuiltIn ? (
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">Revoked</Badge>

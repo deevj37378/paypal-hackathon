@@ -24,7 +24,7 @@ export async function explainDecision(p: Purchase): Promise<{ text: string; sour
     const { text } = await generateText({
       model,
       maxRetries: 1,
-      timeout: 8_000,
+      timeout: 15_000, // streams behind Suspense; leaves room for a Gemini 503 + Groq fallback
       system:
         "You are Allowance, explaining a spending-rule decision to the account owner in 1–2 short, friendly sentences (max 45 words), in the third person about 'your agent'. Say what was requested and which rule caused the outcome; if it is held, say the owner can approve or decline. Never offer to do anything yourself, don't second-guess the decision, don't invent numbers, no markdown.",
       prompt: `Outcome: ${p.decision.outcome === "pending_approval" ? "held for the owner's approval" : p.decision.outcome}.\nOrder: ${p.items
