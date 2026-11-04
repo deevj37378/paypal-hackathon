@@ -2,62 +2,156 @@
 
 **Spending limits for AI agents, enforced by PayPal.**
 
-**Live demo (PayPal sandbox):** https://allowance-eight-eta.vercel.app
+**Live demo (PayPal sandbox):** https://allowance-eight-eta.vercel.app · click **Try the demo**, no sign-up, no PayPal login.
 
-AI agents can shop now, but nothing stops one from overspending or buying the wrong thing. Allowance lets you give any agent (Claude, ChatGPT, or your own) a limited, revocable PayPal spending permission. You write the rules in plain English. A deterministic checker enforces them on every purchase.
+AI agents can shop now. Nothing stops one from overspending or buying the wrong thing. Card-on-file is all or nothing, and "please don't spend more than $40" in a prompt is a suggestion to a model, not a limit.
 
-> **Design principle: the AI never makes the final money decision.**
-> A deterministic, unit-tested rule checker approves, holds, or blocks every purchase. The LLM is used only to
-> (a) compile your English rules into a strict JSON policy that you confirm,
-> (b) explain held or blocked purchases in plain English, and
-> (c) power the built-in shopping agent.
-> This keeps the system safe and LLM calls few.
+Allowance gives any AI agent (Claude, ChatGPT, your own) a **limited, revocable PayPal spending permission**. You write the rules in plain English. Every purchase the agent asks for is approved and paid, held for your OK (Telegram buttons), or blocked with a plain-English reason. The store is paid out by PayPal Payouts, and one tap revokes an agent.
+
+> ### The AI never makes the money decision
+> A deterministic, unit-tested rule checker (`src/lib/policy/check.ts`) approves, holds or blocks every purchase. The LLM is used only to
+> **(a)** turn your English rules into a strict JSON policy *that you confirm*,
+> **(b)** explain held or blocked purchases in plain English (labelled "explanation only"), and
+> **(c)** power the built-in demo shopping agent, which goes through the same checker as any other agent.
+> Prices and categories come from the store, never from the agent. A human approval satisfies "ask me first" but can never exceed a hard limit.
+
+---
+
+## 2-minute judge path
+
+1. Open https://allowance-eight-eta.vercel.app → **Try the demo**. You get a 24-hour sandbox account with the default rules ("$150/month, only coffee and books, max $40 per order, ask me over $25, ask before new merchants") and a pre-linked sandbox PayPal buyer.
+2. In **Play the story**, click the steps in order:
+   - **Agent buys coffee ($18)** → *Paid*. Charged to the saved PayPal with no buyer present; the store payout lands about 20 s later.
+   - **Agent buys a $32 book** → *Needs approval*. Approve it at the top of the dashboard → charged.
+   - **Agent tries a mug** → *Blocked: "Kitchen isn't in your allowed categories."*
+   - **Agent tries a new store** → *Held: you haven't bought from Gadget Hub before.*
+3. Click any purchase → **timeline** (requested → rule check → approval → charged → store paid), the rule-by-rule check, and the AI explanation.
+4. **Refund** the coffee (inline confirm). The payout is cancelled if it's still in its refund window.
+5. **Try the agent** → "Restock my coffee and get the book I mentioned." A streaming chat agent with the same four tools Claude gets over MCP.
+6. **Rules** → type "$200 a month, coffee, books and kitchen, ask me over $30" → **Translate with AI** → review the highlighted changes → **Activate**.
+7. **Agents** → **Revoke** the built-in assistant → run a demo step again → refused. ("Turn back on" re-enables it.)
+8. **Demo store** (`/store`) and **Merchant view** (`/store/merchant`): agent-made sales, payouts received, refunds and clawbacks.
+
+Optional: **Agents → Create key** shows copy-paste config for **Claude Desktop** (MCP via `mcp-remote`) and **Claude Code**. Connect **Telegram** on the dashboard to approve held purchases from your phone.
+
+---
 
 ## How it works
-_TODO (M7): architecture diagram._
 
-1. Write rules in English → Gemini compiles them into a Zod-validated policy → you confirm the rule cards.
-2. Link PayPal once (PayPal Vault, buyer consent).
-3. Connect an agent through the Allowance MCP server, or use the built-in chat agent.
-4. Each purchase request is checked against your policy: **approved** (charged to your vaulted PayPal, then paid out to the merchant), **pending approval** (Telegram Approve/Decline), or **blocked** (with a reason).
+```mermaid
+flowchart LR
+  subgraph Agents
+    CD[Claude Desktop / Claude Code<br/>MCP over Streamable HTTP]
+    REST[Any agent<br/>REST /api/v1/purchases]
+    BI[Built-in chat agent<br/>AI SDK + Gemini]
+  end
+  CD & REST & BI -->|agent key, re-checked every call| T[Shared tools<br/>search_store · get_allowance_status<br/>request_purchase · get_purchase_status]
+  T --> R[Resolve prices & categories<br/>from the store]
+  R --> L{{Per-user lock<br/>pg_advisory_xact_lock}}
+  L --> C[Deterministic rule checker<br/>pure, unit tested]
+  C -->|approved| PAY[PayPal Orders v2<br/>charge vaulted wallet]
+  C -->|pending_approval| H[Owner approves<br/>dashboard or Telegram]
+  C -->|blocked| B[Plain-English reason<br/>back to the agent]
+  H -->|re-check limits| PAY
+  PAY --> W[Settlement window<br/>15 min, 20 s in demo]
+  W --> PO[PayPal Payouts<br/>to the merchant]
+  WH[PayPal webhooks<br/>signature-verified] -.reconcile.-> PAY & PO
+  G[Gemini → Groq fallback] -.rules compiler & explanations.-> C
+```
 
-## How a purchase is decided
-```
-agent ──request_purchase──▶ validate (Zod) ─▶ price & categorise from the store (never trust the agent)
-                                       └──▶ deterministic rule checker (src/lib/policy/check.ts, unit tested)
-                                              ├─ approved         → charge saved PayPal (Orders v2 + vault_id) → payout held for a settlement window → Payouts to merchant
-                                              ├─ pending_approval → owner approves/declines → re-checked (limits still apply) → charge
-                                              └─ blocked          → plain-English reason back to the agent
-```
-- **Settlement window:** merchant payouts wait `PAYOUT_HOLD_SECONDS` (default 15 min; 20 s for demo accounts). A refund inside the window cancels the payout. A refund after it records a clawback that is netted from the merchant's next payouts.
-- **Idempotency:** every PayPal POST uses a `PayPal-Request-Id` derived from our purchase id, and agents can pass `idempotency_key`.
-- **Kill switch:** each agent has its own hashed API key; revoking it takes effect on the next request.
+**Money flow.** The buyer links PayPal once (Vault, buyer consent). Allowance (the platform's sandbox business account) charges the saved wallet with Orders v2 (`vault_id`, merchant-initiated `stored_credential`), holds the merchant's share for a short settlement window, then pays the store with Payouts. A refund inside the window cancels the payout; a refund after it creates a clawback that is netted from the store's next payouts.
 
-## Agent API (REST; MCP in M3)
-```bash
-curl -X POST $APP_URL/api/v1/purchases \
-  -H "Authorization: Bearer alw_sk_…" -H "Content-Type: application/json" \
-  -d '{"merchant_id":"demo-store","items":[{"product_id":"coffee-house-blend","quantity":1}],"total":"18.00","currency":"USD","reason":"Restock coffee"}'
-# → {"purchase_id":"pur_…","status":"approved" | "pending_approval" | "blocked", "reasons":[…], …}
-curl $APP_URL/api/v1/purchases/pur_… -H "Authorization: Bearer alw_sk_…"
-```
+**Safety properties (all tested).**
+- Parallel agent calls can't overspend: check-and-reserve runs in a transaction holding a per-user advisory lock. 5 parallel $30 requests against $100 → exactly 3 succeed (`npm run test:db`); without the lock the test fails.
+- Idempotent everywhere: PayPal-Request-Id derived from our purchase id on every POST; agents pass `idempotency_key`; webhooks are de-duplicated by event id.
+- Kill switch: agent keys are hashed (sha256), shown once, and re-checked on every tool call, so revoking works mid-session. The built-in agent can't be silently re-created.
+- Lost responses: if PayPal charges but our request times out, the purchase stays "processing" until the `PAYMENT.CAPTURE.COMPLETED` webhook (matched by `custom_id`) settles it; a sweeper fails it after 15 minutes otherwise.
+- Public demo protection: DB-backed rate limits per agent, per user, per IP, and a global daily AI cap.
+
+## PayPal APIs used, and why
+
+| API | Used for |
+|---|---|
+| **JS SDK v6** (`createPayPalSavePaymentSession`, client token) | The buyer's one-time consent to save PayPal (Link PayPal page). |
+| **Payment Method Tokens v3** (setup token → payment token) | Vault the buyer's PayPal wallet without a purchase. `usage_pattern: UNSCHEDULED_PREPAID` (agent charges are on-demand, variable, before shipping). |
+| **Orders v2** with `payment_source.paypal.vault_id` + `stored_credential {MERCHANT, SUBSEQUENT, UNSCHEDULED_PREPAID}` | Charge an approved purchase with no buyer present (returns COMPLETED). |
+| **Payouts** | Pay the merchant after the settlement window; batch polling + webhooks confirm it. |
+| **Refunds** (`/v2/payments/captures/{id}/refund`) | One-tap refunds from the dashboard. |
+| **Webhooks** + **verify-webhook-signature** | Reconcile captures, denials, external refunds and payout outcomes; signatures verified with the raw body. |
+| **Catalog Products** | The demo store's products are mirrored into the PayPal catalog (`npm run catalog:sync`). |
+| OAuth2 client credentials | Server auth with token caching. |
+
+All calls go through one typed client (`src/lib/paypal/client.ts`): token caching, `PayPal-Request-Id` on every POST, retries with backoff on 429/5xx, and `debug_id` on every error. Sandbox only; the app refuses to start against a non-sandbox base URL.
+
+## AI used, and how
+
+**In the product (free tiers only):**
+- **Google Gemini** via the Vercel AI SDK 7 (`gemini-3.5-flash` for the rules compiler and agent, `gemini-3.5-flash-lite` for explanations) with **automatic fallback to Groq** (`gpt-oss-120b`) through a small language-model middleware: if Gemini fails (429 quota, 5xx, 404), the same call is retried on Groq. Model ids are env-configurable.
+- **Rules compiler:** structured output → converted to cents → validated with the same Zod schema the checker uses. It asks a clarifying question when a rule is ambiguous (for example a missing monthly limit). Anything the text doesn't mention keeps its current value, and kept values are listed as assumptions. Nothing activates until you click Activate.
+- **Explanations:** one short sentence per held or blocked purchase, cached on the row; falls back to the checker's own reasons.
+- **Built-in agent:** streaming tool-calling chat using the exact same four tools as the MCP server.
+- Every AI endpoint is rate limited per user, has a global daily cap and caching, and the app keeps working (minus AI extras) if no model is available.
+
+**For building it:** Claude Code (Claude Opus) wrote and tested the code with the **PayPal AI Toolkit plugin** for Claude Code (its best-practices skill and live PayPal docs were checked before each API was written) and the Vercel plugin for deployment. The MCP Inspector CLI and Playwright (driving real Chrome) were used for verification.
 
 ## Tech
-Next.js (App Router) · Tailwind · shadcn/ui · Neon Postgres + Drizzle · Vercel AI SDK (Gemini free tier, Groq fallback) · MCP (streamable HTTP) · PayPal Vault v3, Orders v2, Payouts, Refunds, Webhooks (sandbox) · Telegram Bot API.
 
-## Setup
+Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind 4 · shadcn/ui (Base UI) · Neon Postgres + Drizzle (HTTP driver; WebSocket Pool for locked transactions) · Vercel AI SDK 7 · `mcp-handler` 2 (MCP SDK v2) · Telegram Bot API · Vitest · Vercel Hobby.
+
+## Run it yourself
+
+Everything is free and needs no card.
+
 ```bash
+git clone https://github.com/deevj37378/paypal-hackathon && cd paypal-hackathon
 npm install
-cp .env.example .env.local   # fill in; every value is free and the comments say where to get it
-npm run db:push              # create tables in Neon
-npm run db:seed              # demo merchants + products
-npm test                     # rule checker unit tests
-npm run dev
-curl localhost:3100/api/health   # → {"db":"ok","paypal":"ok"}
+cp .env.example .env.local      # every variable is commented with where to get it
+npm run db:push                 # create tables (use a Neon *branch* for local dev)
+npm run db:seed                 # demo merchants + products
+npm run catalog:sync            # optional: mirror products into the PayPal Catalog API
+npm run dev                     # http://localhost:3100
 ```
 
-## Sandbox test accounts
-_TODO: sandbox-only buyer login for judges._
+1. **PayPal sandbox:** developer.paypal.com → Apps & Credentials → create an app with **Vault (Save payment methods)** and **Payouts** enabled. You need 2 business accounts (platform + demo store) and 1 personal account (buyer). Put the client id and secret in `.env.local` and the second business account's email in `STORE_PAYPAL_EMAIL`.
+2. **Neon:** create a project (and a `dev` branch for local work); paste the pooled connection string.
+3. **AI:** a Gemini key from aistudio.google.com and (optional) a Groq key from console.groq.com.
+4. **Demo mode (optional):** open `/link-paypal`, approve with the sandbox buyer, then copy that row's `payment_token_id` into `DEMO_PAYMENT_TOKEN_ID`.
+5. **Telegram (optional):** create a bot with @BotFather, set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`, deploy, then `npx tsx --env-file=.env.local scripts/telegram-webhook.ts https://<your-app>/api/telegram/webhook`.
+6. **PayPal webhooks (deployed app):** `npx tsx --env-file=.env.local scripts/paypal-webhook.ts create https://<your-app>/api/paypal/webhook` and put the id in `PAYPAL_WEBHOOK_ID`.
+
+Tests: `npm test` (rule checker, money, rule cards) · `npm run test:db` (concurrency + webhook handling against a dev database; refuses to run against the live DB) · `node scripts/smoke.mjs <url>` (live smoke test incl. MCP).
+
+### Sandbox test accounts
+
+Judges don't need any: **Try the demo** uses a pre-linked sandbox buyer. To test the real Link PayPal flow, use a PayPal **sandbox personal** account (create one under developer.paypal.com → Testing Tools → Sandbox Accounts) or the one listed in the Devpost testing instructions. Sandbox credentials only; never real accounts.
+
+### Connect Claude
+
+On the Agents page, create a key and copy the generated config. For Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "allowance": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://allowance-eight-eta.vercel.app/api/mcp", "--header", "Authorization:${ALLOWANCE_AUTH}"],
+      "env": { "ALLOWANCE_AUTH": "Bearer alw_sk_…" }
+    }
+  }
+}
+```
+
+Claude Code: `claude mcp add --transport http allowance https://allowance-eight-eta.vercel.app/api/mcp --header "Authorization: Bearer alw_sk_…"`
+
+## Limitations and what's next
+
+- **Sandbox only.** Going live needs PayPal approval for vaulting and Payouts, and a real merchant onboarding flow (PayPal Commerce Platform) instead of one platform account paying stores via Payouts.
+- **Accounts are per-browser** (signed cookie, no email login) to stay zero-cost; real sign-in is next.
+- **One currency (USD)** and a demo catalog; real stores would expose their catalog over MCP or an agentic-commerce protocol.
+- **Payout timing** relies on the open dashboard plus webhooks; Vercel Hobby cron only runs daily as a backstop.
+- **claude.ai web connectors** need OAuth, which Allowance doesn't offer yet (Claude Desktop and Claude Code work).
+- Next: per-agent budgets, merchant allow-lists from purchase history, spending reports, and OAuth for MCP clients.
 
 ## License
+
 MIT. See [LICENSE](LICENSE).

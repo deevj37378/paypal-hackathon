@@ -26,9 +26,11 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
 - **Review fixes** (Nov 5): (1) `/agent` crash in Chrome fixed: the useEffect returned `scrollIntoView()`'s Promise, which React called as cleanup. Verified in real Chrome 156 on the live site: budget question + coffee/book purchase, zero page or console errors. (2) Guided-demo cards show each scenario's live purchase status (approve/decline/refund reflected) with "Run again". (3) Replaced built-in agent identities hidden; built-in agent stamps last used. (4) Rules compiler keeps per-order cap, approval threshold, allowed/blocked lists and monthly limit unless the text explicitly changes them, and lists what it kept. Verified with Gemini: "$200 a month, coffee, books and kitchen, ask me over $30" keeps the $40 cap; "no per-order limit" removes it. (5) Rule cards show merchant names; MCP says "Invalid API key"; inline refund confirm.
 - **Telegram connect**: t.me is blocked on some networks, so the card also offers a `tg://` app link and a copyable `/start <code>`. Our webhook side verified with a signed /start update on live; your real-device connection is still unconfirmed.
 
+- **Live test by Deev** (Nov 5): Telegram connect, Claude Desktop over MCP, coffee paid / book held, Telegram Approve → "Paid $32.00": all passed.
+- **M7** (Nov 5): font fix (Geist), calm fintech palette, redesigned landing, dashboard order + mobile purchase cards, purchase stage stepper, deterministic dates (hydration fix), explanation voice. Telegram sends purchases already waiting for approval when a chat connects. Screenshots of all pages at 1440/768/390 in real Chrome: no overflow, no console errors, no unlabeled inputs. README rewritten (judge path, mermaid architecture, PayPal APIs, AI usage, setup, limitations); `docs/DEVPOST.md`; `docs/VIDEO.md`.
+
 ## Next
-- M7: design pass (incl. the app font falling back to a serif: Geist isn't applied), README, docs/DEVPOST.md, docs/VIDEO.md, final live run-through.
-- Your checks: Telegram connect + tap on a real device; Claude Desktop test.
+- Deev: record the video (docs/VIDEO.md), paste docs/DEVPOST.md into Devpost, add the sandbox buyer login to Devpost's private testing instructions, submit.
 
 ## Known issues / decisions
 - **Dev and prod share one Neon database.** Fine for the hackathon; a Neon dev branch would isolate local testing (the payout worker in either environment processes due payouts for all users).
