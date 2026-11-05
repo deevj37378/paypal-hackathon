@@ -176,6 +176,9 @@ function ToolCard({ name, state, output }: { name: string; state: string; output
 }
 
 function friendlyError(msg: string) {
+  if (/an error occurred|rate|quota|429|overloaded/i.test(msg)) {
+    return "The free AI models are busy right now. Anything already bought is on your dashboard. Try again in a minute.";
+  }
   try {
     const j = JSON.parse(msg);
     return j.message ?? "The agent hit an error. Try again.";

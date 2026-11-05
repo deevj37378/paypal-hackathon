@@ -5,60 +5,82 @@ import { wrapLanguageModel } from "ai";
 import { env } from "@/lib/env";
 
 /**
- * LLM access for the three AI features (rules compiler, explanations, built-in agent).
- * Provider is chosen by AI_PROVIDER (google default) and falls back to the other provider
- * automatically when the primary errors (e.g. 429 free-tier quota). Returns null when no
- * provider is configured: callers must degrade gracefully. The AI never decides money.
+ * LLM access for the AI features (rules compiler, explanations, built-in agent).
+ *
+ * Free tiers have small per-model, per-minute quotas, so instead of one model we use a chain:
+ * each free model has its own quota. The primary provider (AI_PROVIDER, google by default) goes
+ * first, then the other models in order. A model that just failed with 429/5xx is skipped for a
+ * short cooldown so busy minutes don't pay the latency of hitting it on every step.
+ * Returns null when no provider is configured: callers degrade gracefully. The AI never decides money.
  */
 
 type Tier = "smart" | "fast";
+type Candidate = { name: string; model: LanguageModelV4 };
 
-function candidates(tier: Tier): { name: "google" | "groq"; model: LanguageModelV4 }[] {
+const cooldownUntil = new Map<string, number>();
+const COOLDOWN_MS = 30_000;
+
+function chain(tier: Tier): Candidate[] {
   const e = env();
-  const google = e.GOOGLE_GENERATIVE_AI_API_KEY
-    ? {
-        name: "google" as const,
-        model: createGoogleGenerativeAI({ apiKey: e.GOOGLE_GENERATIVE_AI_API_KEY })(tier === "fast" ? e.GEMINI_FAST_MODEL : e.GEMINI_MODEL) as LanguageModelV4,
-      }
-    : null;
-  const groq = e.GROQ_API_KEY ? { name: "groq" as const, model: createGroq({ apiKey: e.GROQ_API_KEY })(e.GROQ_MODEL) as LanguageModelV4 } : null;
-  const ordered = e.AI_PROVIDER === "groq" ? [groq, google] : [google, groq];
-  return ordered.filter((x): x is NonNullable<typeof x> => x !== null);
+  const google = e.GOOGLE_GENERATIVE_AI_API_KEY ? createGoogleGenerativeAI({ apiKey: e.GOOGLE_GENERATIVE_AI_API_KEY }) : null;
+  const groq = e.GROQ_API_KEY ? createGroq({ apiKey: e.GROQ_API_KEY }) : null;
+  const geminiIds = tier === "fast" ? [e.GEMINI_FAST_MODEL, e.GEMINI_MODEL] : [e.GEMINI_MODEL, e.GEMINI_FAST_MODEL];
+  const groqIds = [e.GROQ_MODEL, e.GROQ_FALLBACK_MODEL];
+  const g: Candidate[] = google ? [...new Set(geminiIds)].map((id) => ({ name: `google/${id}`, model: google(id) as LanguageModelV4 })) : [];
+  const q: Candidate[] = groq ? [...new Set(groqIds)].map((id) => ({ name: `groq/${id}`, model: groq(id) as LanguageModelV4 })) : [];
+  return e.AI_PROVIDER === "groq" ? [...q, ...g] : [...g, ...q];
 }
 
-/** Middleware: if the primary model fails to start a call, transparently retry on the fallback model. */
-function fallbackTo(fallback: LanguageModelV4, label: string): LanguageModelV4Middleware {
+const status = (e: unknown) => (e as { statusCode?: number })?.statusCode;
+const label = (e: unknown) => (status(e) ? `HTTP ${status(e)}` : ((e as Error)?.message?.slice(0, 80) ?? "error"));
+/** Quota / overload / transient errors are worth trying the next model for; a 400 (bad request) is not. */
+const retryable = (e: unknown) => {
+  const s = status(e);
+  return s === undefined || s === 404 || s === 408 || s === 429 || s >= 500;
+};
+
+/** Order the chain so models in cooldown go last (still tried if everything else fails). */
+function ordered(cands: Candidate[]) {
+  const now = Date.now();
+  const ready = cands.filter((c) => (cooldownUntil.get(c.name) ?? 0) <= now);
+  const cooling = cands.filter((c) => (cooldownUntil.get(c.name) ?? 0) > now);
+  return [...ready, ...cooling];
+}
+
+async function tryChain<T>(cands: Candidate[], call: (m: LanguageModelV4) => PromiseLike<T>): Promise<T> {
+  let last: unknown;
+  // Two passes: per-minute free quotas often free up within seconds, so after a short pause
+  // the whole chain gets one more chance before the user sees an error.
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass > 0) await new Promise((r) => setTimeout(r, 2500));
+    for (const c of pass === 0 ? ordered(cands) : cands) {
+      try {
+        return await call(c.model);
+      } catch (e) {
+        last = e;
+        if (!retryable(e)) throw e;
+        cooldownUntil.set(c.name, Date.now() + COOLDOWN_MS);
+        console.warn(`[ai] ${c.name} failed (${label(e)}), trying the next model`);
+      }
+    }
+  }
+  throw last;
+}
+
+/** Middleware that runs every model call (each agent step) through the fallback chain. */
+function chainMiddleware(cands: Candidate[]): LanguageModelV4Middleware {
   return {
     specificationVersion: "v4",
-    wrapGenerate: async ({ doGenerate, params }) => {
-      try {
-        return await doGenerate();
-      } catch (e) {
-        console.warn(`[ai] primary failed (${errLabel(e)}), falling back to ${label}`);
-        return fallback.doGenerate(params);
-      }
-    },
-    wrapStream: async ({ doStream, params }) => {
-      try {
-        return await doStream();
-      } catch (e) {
-        console.warn(`[ai] primary stream failed (${errLabel(e)}), falling back to ${label}`);
-        return fallback.doStream(params);
-      }
-    },
+    wrapGenerate: async ({ params }) => tryChain(cands, (m) => m.doGenerate(params)),
+    wrapStream: async ({ params }) => tryChain(cands, (m) => m.doStream(params)),
   };
 }
 
-const errLabel = (e: unknown) => {
-  const status = (e as { statusCode?: number })?.statusCode;
-  return status ? `HTTP ${status}` : (e as Error)?.message?.slice(0, 80) ?? "error";
-};
-
 export function getModel(tier: Tier = "smart"): LanguageModelV4 | null {
-  const [primary, secondary] = candidates(tier);
-  if (!primary) return null;
-  if (!secondary) return primary.model;
-  return wrapLanguageModel({ model: primary.model, middleware: fallbackTo(secondary.model, secondary.name) }) as LanguageModelV4;
+  const cands = chain(tier);
+  if (!cands.length) return null;
+  if (cands.length === 1) return cands[0].model;
+  return wrapLanguageModel({ model: cands[0].model, middleware: chainMiddleware(cands) }) as LanguageModelV4;
 }
 
-export const aiConfigured = () => candidates("fast").length > 0;
+export const aiConfigured = () => chain("fast").length > 0;

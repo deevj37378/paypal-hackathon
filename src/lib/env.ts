@@ -29,6 +29,7 @@ const schema = z.object({
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
   GEMINI_FAST_MODEL: z.string().default("gemini-3.5-flash-lite"),
   GROQ_MODEL: z.string().default("openai/gpt-oss-120b"),
+  GROQ_FALLBACK_MODEL: z.string().default("openai/gpt-oss-20b"),
   /** Global daily cap on LLM calls across all users (protects the free quota from public judges). */
   AI_DAILY_LIMIT: z.coerce.number().int().min(0).default(800),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
