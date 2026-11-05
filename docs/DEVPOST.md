@@ -43,6 +43,13 @@ The merchant side is a small "agent-ready" demo store with a JSON product feed a
 - **Stack:** Next.js 16, Tailwind, shadcn/ui, Neon Postgres + Drizzle, Telegram Bot API, deployed on Vercel. Total cost: $0.
 - **Built with AI tools:** Claude Code with the PayPal AI Toolkit plugin (best-practices skill + live docs checked before each PayPal call) and the Vercel plugin; verified with the MCP Inspector and Playwright driving real Chrome.
 
+### Merchant analytics with AG Studio
+
+The merchant side has a live analytics dashboard (`/store/analytics`) built with **AG Studio** on Allowance's own database:
+- A **custom "Rule decisions" widget** shows what the deterministic checker decided (requested → approved / held / blocked → charged → paid out). Clicking a decision **cross-filters** every other widget.
+- It's **themed to match Allowance** (navy palette, Geist, the same card styling), with KPI tiles and sparklines, outcomes by agent, top block reasons, spend by category over time, payout status, and an every-request grid.
+- **Studio Agent Framework with a swapped-in model:** Studio's built-in agents run on our free **Gemini → Groq** chain. Studio's own OpenAI adapter talks to a small bridge that runs each turn through the Vercel AI SDK and answers in the Responses-API format. Ask "show refunds by agent this week" and a widget appears. It's read-only with respect to money: the model can only propose dashboard actions.
+
 ## Challenges we ran into
 
 - **Charging without the buyer.** We spiked PayPal Vault first, on day one, with a Plan B (prepaid allowance) ready. Vault worked in sandbox, so then the work became choosing the right `usage_pattern` from PayPal's schema (it's `UNSCHEDULED_PREPAID`, not POSTPAID) and the matching stored-credential flags.
@@ -50,6 +57,7 @@ The merchant side is a small "agent-ready" demo store with a JSON product feed a
 - **Agents are concurrent.** Five parallel tool calls could all read "$100 left" and all pass. We wrote a test that proves the bug (5/5 succeed), then fixed it with a per-user Postgres advisory lock (exactly 3/5).
 - **Lost responses.** A charge can succeed at PayPal while our request times out. Purchases stay "processing" until the signature-verified capture webhook reconciles them.
 - **LLMs and safety settings.** An early rules compiler silently dropped limits the user didn't re-mention. Now anything not mentioned keeps its current value, and every kept value is listed before you confirm.
+- **Free-tier AI quotas.** Each free model has small per-minute and per-day quotas, so we chain four models with cooldowns, and AG Studio's large dashboard turns go to Gemini first because its per-minute token limit is highest.
 - **Real-world networks:** t.me links are blocked on some ISPs, so Telegram can also be connected via a `tg://` link or a copyable `/start` code.
 
 ## Accomplishments that we're proud of
@@ -76,7 +84,7 @@ The merchant side is a small "agent-ready" demo store with a JSON product feed a
 
 ## Built with
 
-next.js · typescript · react · tailwindcss · shadcn-ui · paypal-vault · paypal-orders-api · paypal-payouts · paypal-webhooks · paypal-catalog-api · paypal-js-sdk-v6 · model-context-protocol · vercel-ai-sdk · google-gemini · groq · neon · postgresql · drizzle-orm · telegram-bot-api · vercel · zod · vitest
+next.js · typescript · react · tailwindcss · shadcn-ui · ag-studio · ag-grid · paypal-vault · paypal-orders-api · paypal-payouts · paypal-webhooks · paypal-catalog-api · paypal-js-sdk-v6 · model-context-protocol · vercel-ai-sdk · google-gemini · groq · neon · postgresql · drizzle-orm · telegram-bot-api · vercel · zod · vitest
 
 ---
 

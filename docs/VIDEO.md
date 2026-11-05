@@ -1,4 +1,4 @@
-# Demo video script: Allowance (target 2:40, hard limit under 3:00)
+# Demo video script: Allowance (target 2:43, hard limit under 3:00)
 
 **Setup before recording**
 - Fresh demo account: open the live site → Try the demo. Connect Telegram on the dashboard (phone visible or mirrored).
@@ -16,9 +16,10 @@
 | 1:20–1:35 | Phone: Telegram message "Approve $32.00?" → tap **Approve** → message changes to "Paid $32.00" | "I get a Telegram message with Approve and Decline. One tap, and it's paid." |
 | 1:35–1:50 | Back in Claude Desktop: "Did the book go through?" → get_purchase_status → approved | "Claude checks back and sees it went through. The agent never sees my PayPal account, and it can't approve itself." |
 | 1:50–2:05 | Dashboard guided demo: click **Agent tries a mug** → Blocked with reason; click into the purchase → stepper + rule check + AI explanation | "Anything against my rules is blocked, and the agent gets a plain-English reason. Every purchase has a timeline: requested, rule check, approval, charged, and the store paid out through PayPal Payouts after a short refund window." |
-| 2:05–2:18 | Purchases table: **Refund** the coffee (inline confirm) → Refunded; then `/store/merchant` tiles | "Refunds are one tap. On the merchant side, the store sees sales made by agents and payouts received, and refunds after a payout are clawed back automatically." |
-| 2:18–2:30 | Agents page: **Revoke** Claude Desktop → in Claude ask "buy a decaf" → "This agent's access was revoked by its owner." | "And if an agent misbehaves, the kill switch revokes it on its very next request, even mid-conversation." |
-| 2:30–2:40 | Landing "Built with" row, then the URL on screen | "Allowance is built on PayPal Vault, Orders, Payouts, Refunds, Webhooks and the Catalog API, with an MCP server and Gemini. Try the demo at the link below: no sign-up, sandbox only." |
+| 2:05–2:13 | Purchases table: **Refund** the coffee (inline confirm) → Refunded | "Refunds are one tap, and a refund after a payout is clawed back from the merchant automatically." |
+| 2:13–2:23 | `/store/analytics` (AG Studio): click **Blocked by rules** in the decision flow → every widget filters; switch to Edit layout, click "Refunds by agent this week" → a widget appears | "The merchant gets live analytics built with AG Studio. Click a rule decision and the whole dashboard filters, and Studio's AI agents, running on our free Gemini setup, build new charts on request." |
+| 2:23–2:33 | Agents page: **Revoke** Claude Desktop → in Claude ask "buy a decaf" → "This agent's access was revoked by its owner." | "And if an agent misbehaves, the kill switch revokes it on its very next request, even mid-conversation." |
+| 2:33–2:43 | Landing "Built with" row, then the URL on screen | "Allowance is built on PayPal Vault, Orders, Payouts, Refunds, Webhooks and the Catalog API, with an MCP server and Gemini. Try the demo at the link below: no sign-up, sandbox only." |
 
 **Shot list / B-roll (optional, if time allows)**
 - Close-up of the rule check panel ("Decided by Allowance's deterministic checker, not by AI").

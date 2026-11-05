@@ -31,6 +31,14 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
 
 - **Final live run-through** (Nov 5, real Chrome 156): 18/18 checks: demo, coffee paid, book held → approved → paid, mug blocked with reason, new store held, store payout paid after the demo hold, inline refund, purchase stepper + AI explanation, rules translate (kept $40 cap) + activate, agent chat purchase, revoke → refused → turn back on, store/merchant/feed. Live screenshots at 1440/768/390 for 10 pages: no overflow, no console errors, no unlabeled inputs. Smoke test incl. MCP passes.
 
+- **Nov 5–6 batch:**
+  - (4) GitHub About → Website is https://allowance-eight-eta.vercel.app.
+  - (5) Devpost testing instructions use a placeholder for a separate judge sandbox account; the shared demo buyer is never shared.
+  - (3) Chat prompt defaults "my coffee" to 1 bag of House Blend (coffee-house-blend); verified 4× on Gemini and on Groq.
+  - (2) GROQ_API_KEY confirmed in Vercel production. With AI_PROVIDER=groq: rules compiler, explanation and chat all work. Stress tests showed free per-minute and daily quotas run out under load, so: 4-model chain (Gemini flash, Groq 120b, Groq 20b, Gemini flash-lite), cooldowns (30 s, 10 min for daily quota), a second pass, chat maxDuration 120 s, friendlier "models busy" message, stream errors logged. Live chat verified after the fix.
+  - (1) AG Studio analytics at `/store/analytics`: custom Rule-decisions flow widget with cross-filtering (verified live: 57 → 14 → 57), Allowance theme, KPI tiles, charts, grid, View/Edit. Studio Agent Framework via an OpenAI Responses-API bridge onto our Gemini → Groq chain (read-only: no tool execute server-side). License key env `AG_STUDIO_LICENSE_KEY` (pending Deev's trial). Docs updated.
+  - Known: on Nov 5 the Gemini flash daily quota was used up by stress testing, so the Studio assistant couldn't be fully verified end to end that day (it read the report, then free models were busy). Retest after the quota reset.
+
 ## Next
 - Deev: record the video (docs/VIDEO.md), paste docs/DEVPOST.md into Devpost, add the sandbox buyer login to Devpost's private testing instructions, submit.
 

@@ -31,6 +31,7 @@ Allowance gives any AI agent (Claude, ChatGPT, your own) a **limited, revocable 
 6. **Rules** → type "$200 a month, coffee, books and kitchen, ask me over $30" → **Translate with AI** → review the highlighted changes → **Activate**.
 7. **Agents** → **Revoke** the built-in assistant → run a demo step again → refused. ("Turn back on" re-enables it.)
 8. **Demo store** (`/store`) and **Merchant view** (`/store/merchant`): agent-made sales, payouts received, refunds and clawbacks.
+9. **Analytics** (`/store/analytics`, built with **AG Studio**): click *Blocked by rules* in the "What the rule checker decided" flow and every widget filters to blocked requests. Switch to **Edit layout** and ask the AI assistant "show refunds by agent this week".
 
 Optional: **Agents → Create key** shows copy-paste config for **Claude Desktop** (MCP via `mcp-remote`) and **Claude Code**. Connect **Telegram** on the dashboard to approve held purchases from your phone.
 
@@ -86,7 +87,7 @@ All calls go through one typed client (`src/lib/paypal/client.ts`): token cachin
 ## AI used, and how
 
 **In the product (free tiers only):**
-- **Google Gemini** via the Vercel AI SDK 7 (`gemini-3.5-flash` for the rules compiler and agent, `gemini-3.5-flash-lite` for explanations) with **automatic fallback to Groq** (`gpt-oss-120b`) through a small language-model middleware: if Gemini fails (429 quota, 5xx, 404), the same call is retried on Groq. Model ids are env-configurable.
+- **Google Gemini** via the Vercel AI SDK 7 (`gemini-3.5-flash` for the rules compiler and agent, `gemini-3.5-flash-lite` for explanations) with **automatic fallback to Groq** (`gpt-oss-120b`, then `gpt-oss-20b`) through a small language-model middleware. Each free model has its own quota: a model that returns 429/5xx is skipped for a cooldown (10 minutes for a daily-quota error), the next one takes the same call, and the whole chain gets a second pass after a short pause. Model ids are env-configurable.
 - **Rules compiler:** structured output → converted to cents → validated with the same Zod schema the checker uses. It asks a clarifying question when a rule is ambiguous (for example a missing monthly limit). Anything the text doesn't mention keeps its current value, and kept values are listed as assumptions. Nothing activates until you click Activate.
 - **Explanations:** one short sentence per held or blocked purchase, cached on the row; falls back to the checker's own reasons.
 - **Built-in agent:** streaming tool-calling chat using the exact same four tools as the MCP server.
@@ -94,9 +95,19 @@ All calls go through one typed client (`src/lib/paypal/client.ts`): token cachin
 
 **For building it:** Claude Code (Claude Opus) wrote and tested the code with the **PayPal AI Toolkit plugin** for Claude Code (its best-practices skill and live PayPal docs were checked before each API was written) and the Vercel plugin for deployment. The MCP Inspector CLI and Playwright (driving real Chrome) were used for verification.
 
+## Merchant analytics with AG Studio
+
+`/store/analytics` is an [AG Studio](https://www.ag-grid.com/studio/) dashboard over Allowance's own database (purchases are anonymous; agents are grouped by type):
+
+- **Custom widget, "Rule decisions":** a flow of what the deterministic checker decided (requested → approved / held / blocked → charged → paid out), with counts and conversion. Clicking a decision **cross-filters** the whole dashboard (`widgetApi.toggleCrossFilter`). Source: `src/app/store/analytics/studio/decision-flow-widget.tsx`.
+- **Themed to match Allowance:** `studioTheme.withParams` mapped onto the app's CSS variables (navy palette, Geist, card radius), with the chart palette ordered so outcomes read navy / red / amber.
+- **Layout:** KPI tiles with sparklines, an agent button filter, outcomes by agent, top block reasons, charged by category over time, payout status, and an every-request grid. View / Edit layout toggle.
+- **Studio Agent Framework with a swapped-in model:** Studio's built-in agents run on our free **Gemini → Groq** chain. AG Studio's own OpenAI adapter (unchanged) posts Responses-API turns to `/api/studio-ai/responses`, which translates each turn into one Vercel AI SDK call and answers in the same protocol. Tools are passed without `execute`, so the model can only propose dashboard actions that Studio runs in the browser. It has no route to purchases, approvals or refunds. Rate limited per IP, with the shared daily AI cap.
+- Licence: set `AG_STUDIO_LICENSE_KEY` (free 45-day trial); without it the dashboard works with a watermark.
+
 ## Tech
 
-Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind 4 · shadcn/ui (Base UI) · Neon Postgres + Drizzle (HTTP driver; WebSocket Pool for locked transactions) · Vercel AI SDK 7 · `mcp-handler` 2 (MCP SDK v2) · Telegram Bot API · Vitest · Vercel Hobby.
+Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind 4 · shadcn/ui (Base UI) · AG Studio 3.1 · Neon Postgres + Drizzle (HTTP driver; WebSocket Pool for locked transactions) · Vercel AI SDK 7 · `mcp-handler` 2 (MCP SDK v2) · Telegram Bot API · Vitest · Vercel Hobby.
 
 ## Run it yourself
 
