@@ -83,5 +83,6 @@ next.js · typescript · react · tailwindcss · shadcn-ui · paypal-vault · pa
 ### Testing instructions for judges (Devpost private field)
 
 - Live: https://allowance-eight-eta.vercel.app → **Try the demo** (no login). Follow "Play the story" on the dashboard; the README has a 2-minute judge path.
-- Optional real PayPal linking: "Start with my own PayPal" → Link PayPal → log in with sandbox buyer **[add sandbox personal email + password here]**.
+- Optional real PayPal linking: "Start with my own PayPal" → Link PayPal → log in with the judge sandbox buyer **[JUDGE SANDBOX ACCOUNT: email + password, a separate sandbox personal account created only for judges]**.
+- Please don't use any other sandbox account: "Try the demo" relies on a separate pre-linked sandbox buyer, and changing that account's saved-PayPal consent would break the demo for everyone.
 - Optional Claude Desktop: Agents → Create key → copy the Claude Desktop config (needs Node.js).
