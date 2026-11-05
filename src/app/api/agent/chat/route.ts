@@ -18,7 +18,7 @@ import { PurchaseInputError } from "@/lib/purchases/service";
 import { RateLimitError } from "@/lib/rate-limit";
 import { requireUserId } from "@/lib/session";
 
-export const maxDuration = 60;
+export const maxDuration = 120; // multi-step tool use + free-tier fallbacks can be slow
 
 const SYSTEM = `You are the owner's shopping assistant inside Allowance. You can spend the owner's money via PayPal, but only through the tools, and only within the owner's rules, which a deterministic checker enforces (you cannot override it).
 How to work:

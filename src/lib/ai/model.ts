@@ -19,16 +19,22 @@ type Candidate = { name: string; model: LanguageModelV4 };
 
 const cooldownUntil = new Map<string, number>();
 const COOLDOWN_MS = 30_000;
+/** "You exceeded your current quota" = daily free quota: no point retrying for a while. */
+const QUOTA_COOLDOWN_MS = 10 * 60_000;
 
 function chain(tier: Tier): Candidate[] {
   const e = env();
   const google = e.GOOGLE_GENERATIVE_AI_API_KEY ? createGoogleGenerativeAI({ apiKey: e.GOOGLE_GENERATIVE_AI_API_KEY }) : null;
   const groq = e.GROQ_API_KEY ? createGroq({ apiKey: e.GROQ_API_KEY }) : null;
-  const geminiIds = tier === "fast" ? [e.GEMINI_FAST_MODEL, e.GEMINI_MODEL] : [e.GEMINI_MODEL, e.GEMINI_FAST_MODEL];
-  const groqIds = [e.GROQ_MODEL, e.GROQ_FALLBACK_MODEL];
-  const g: Candidate[] = google ? [...new Set(geminiIds)].map((id) => ({ name: `google/${id}`, model: google(id) as LanguageModelV4 })) : [];
-  const q: Candidate[] = groq ? [...new Set(groqIds)].map((id) => ({ name: `groq/${id}`, model: groq(id) as LanguageModelV4 })) : [];
-  return e.AI_PROVIDER === "groq" ? [...q, ...g] : [...g, ...q];
+  const gm = (id: string): Candidate[] => (google ? [{ name: `google/${id}`, model: google(id) as LanguageModelV4 }] : []);
+  const qm = (id: string): Candidate[] => (groq ? [{ name: `groq/${id}`, model: groq(id) as LanguageModelV4 }] : []);
+  // Primary model of the preferred provider first, then fast Groq models; the slow-under-load
+  // Gemini model goes last for "smart" (multi-step) work.
+  const primary = tier === "fast" ? gm(e.GEMINI_FAST_MODEL) : gm(e.GEMINI_MODEL);
+  const secondary = tier === "fast" ? gm(e.GEMINI_MODEL) : gm(e.GEMINI_FAST_MODEL);
+  const groqs = [...qm(e.GROQ_MODEL), ...qm(e.GROQ_FALLBACK_MODEL)];
+  const list = e.AI_PROVIDER === "groq" ? [...groqs, ...primary, ...secondary] : [...primary, ...groqs, ...secondary];
+  return list.filter((c, i) => list.findIndex((x) => x.name === c.name) === i);
 }
 
 const status = (e: unknown) => (e as { statusCode?: number })?.statusCode;
@@ -59,7 +65,8 @@ async function tryChain<T>(cands: Candidate[], call: (m: LanguageModelV4) => Pro
       } catch (e) {
         last = e;
         if (!retryable(e)) throw e;
-        cooldownUntil.set(c.name, Date.now() + COOLDOWN_MS);
+        const daily = /quota/i.test((e as Error)?.message ?? "");
+        cooldownUntil.set(c.name, Date.now() + (daily ? QUOTA_COOLDOWN_MS : COOLDOWN_MS));
         console.warn(`[ai] ${c.name} failed (${label(e)}), trying the next model`);
       }
     }
