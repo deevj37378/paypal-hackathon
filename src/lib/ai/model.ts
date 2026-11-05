@@ -14,7 +14,8 @@ import { env } from "@/lib/env";
  * Returns null when no provider is configured: callers degrade gracefully. The AI never decides money.
  */
 
-type Tier = "smart" | "fast";
+/** smart: multi-step chat; fast: short explanations; studio: large-context dashboard turns (Gemini first). */
+type Tier = "smart" | "fast" | "studio";
 type Candidate = { name: string; model: LanguageModelV4 };
 
 const cooldownUntil = new Map<string, number>();
@@ -33,7 +34,12 @@ function chain(tier: Tier): Candidate[] {
   const primary = tier === "fast" ? gm(e.GEMINI_FAST_MODEL) : gm(e.GEMINI_MODEL);
   const secondary = tier === "fast" ? gm(e.GEMINI_MODEL) : gm(e.GEMINI_FAST_MODEL);
   const groqs = [...qm(e.GROQ_MODEL), ...qm(e.GROQ_FALLBACK_MODEL)];
-  const list = e.AI_PROVIDER === "groq" ? [...groqs, ...primary, ...secondary] : [...primary, ...groqs, ...secondary];
+  const list =
+    tier === "studio"
+      ? [...gm(e.GEMINI_MODEL), ...gm(e.GEMINI_FAST_MODEL), ...groqs] // big prompts: Gemini's per-minute token limits are far higher
+      : e.AI_PROVIDER === "groq"
+        ? [...groqs, ...primary, ...secondary]
+        : [...primary, ...groqs, ...secondary];
   return list.filter((c, i) => list.findIndex((x) => x.name === c.name) === i);
 }
 
@@ -42,6 +48,8 @@ const label = (e: unknown) => (status(e) ? `HTTP ${status(e)}` : ((e as Error)?.
 /** Quota / overload / transient errors are worth trying the next model for; a 400 (bad request) is not. */
 const retryable = (e: unknown) => {
   const s = status(e);
+  // Groq rejects a malformed tool call with 400 tool_use_failed: another model may get it right.
+  if (s === 400 && /tool_use_failed|tool call validation/i.test((e as Error)?.message ?? "")) return true;
   return s === undefined || s === 404 || s === 408 || s === 429 || s >= 500;
 };
 

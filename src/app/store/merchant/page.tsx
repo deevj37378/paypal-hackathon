@@ -18,9 +18,14 @@ export default function MerchantPage() {
   return (
     <>
       <SiteHeader>
-        <Link href="/store" className="text-sm text-muted-foreground hover:text-foreground">
-          Storefront
-        </Link>
+        <nav aria-label="Store" className="flex items-center gap-4 text-sm">
+          <Link href="/store" className="text-muted-foreground hover:text-foreground">
+            Storefront
+          </Link>
+          <Link href="/store/analytics" className="font-medium text-primary hover:underline">
+            Analytics dashboard
+          </Link>
+        </nav>
       </SiteHeader>
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-10 sm:px-6">
         <div className="space-y-1">
@@ -28,7 +33,10 @@ export default function MerchantPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Sales made by AI agents</h1>
           <p className="text-sm text-muted-foreground">
             Every order here was placed by an agent, approved by its owner&apos;s rules, paid by the owner&apos;s PayPal, and paid out to
-            this store with PayPal Payouts after a short refund window.
+            this store with PayPal Payouts after a short refund window.{" "}
+            <Link href="/store/analytics" className="underline underline-offset-4">
+              Explore it in the analytics dashboard →
+            </Link>
           </p>
         </div>
         <Suspense fallback={<div className="h-96 animate-pulse rounded-xl border bg-muted/40" />}>

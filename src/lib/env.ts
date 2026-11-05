@@ -20,6 +20,8 @@ const schema = z.object({
   /** Judge demo mode: one pre-linked sandbox buyer (PayPal vault payment token) shared by all demo accounts. */
   DEMO_PAYMENT_TOKEN_ID: z.string().optional().transform((v) => (v ? v : undefined)),
   DEMO_PAYER_EMAIL: z.string().optional(),
+  /** AG Studio trial/commercial licence key (removes the watermark). Optional: Studio works without it. */
+  AG_STUDIO_LICENSE_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   /** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. */
   CRON_SECRET: z.string().optional().transform((v) => (v ? v : undefined)),
   AI_PROVIDER: z.enum(["google", "groq"]).default("google"),

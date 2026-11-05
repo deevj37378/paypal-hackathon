@@ -26,6 +26,8 @@
     "@base-ui/react": "^1.9.0",
     "@modelcontextprotocol/server": "^2.4.0",
     "@neondatabase/serverless": "^1.2.0",
+    "ag-studio": "^3.1.0",
+    "ag-studio-react": "^3.1.0",
     "ai": "^7.0.162",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
