@@ -63,6 +63,8 @@ export default function StudioClient({ data, licenseKey, aiEnabled }: { data: An
             mode={mode}
             onApiReady={(e) => {
               apiRef.current = e.api as unknown as AgStudioApi;
+              // Read-only debugging/inspection hook (the report state is public data).
+              (window as unknown as { allowanceStudio?: AgStudioApi }).allowanceStudio = apiRef.current;
             }}
           />
         </AgStudioProvider>

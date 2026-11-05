@@ -32,6 +32,8 @@ const schema = z.object({
   GEMINI_FAST_MODEL: z.string().default("gemini-3.5-flash-lite"),
   GROQ_MODEL: z.string().default("openai/gpt-oss-120b"),
   GROQ_FALLBACK_MODEL: z.string().default("openai/gpt-oss-20b"),
+  /** Gemini models (in order) for AG Studio's large dashboard-agent turns; each has its own free quota. */
+  STUDIO_GEMINI_MODELS: z.string().default("gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.6-flash"),
   /** Global daily cap on LLM calls across all users (protects the free quota from public judges). */
   AI_DAILY_LIMIT: z.coerce.number().int().min(0).default(800),
   TELEGRAM_BOT_TOKEN: z.string().optional(),

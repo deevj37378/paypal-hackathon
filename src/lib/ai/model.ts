@@ -36,7 +36,9 @@ function chain(tier: Tier): Candidate[] {
   const groqs = [...qm(e.GROQ_MODEL), ...qm(e.GROQ_FALLBACK_MODEL)];
   const list =
     tier === "studio"
-      ? [...gm(e.GEMINI_MODEL), ...gm(e.GEMINI_FAST_MODEL), ...groqs] // big prompts: Gemini's per-minute token limits are far higher
+      ? // AG Studio turns carry ~30-70k tokens of tool schemas: only Gemini's free tier takes requests
+        // that large (Groq's free tier caps a whole minute at 8k tokens). Each model has its own quota.
+        e.STUDIO_GEMINI_MODELS.split(",").map((m) => m.trim()).filter(Boolean).flatMap(gm)
       : e.AI_PROVIDER === "groq"
         ? [...groqs, ...primary, ...secondary]
         : [...primary, ...groqs, ...secondary];
@@ -44,7 +46,11 @@ function chain(tier: Tier): Candidate[] {
 }
 
 const status = (e: unknown) => (e as { statusCode?: number })?.statusCode;
-const label = (e: unknown) => (status(e) ? `HTTP ${status(e)}` : ((e as Error)?.message?.slice(0, 80) ?? "error"));
+const label = (e: unknown) => {
+  const err = e as Error & { cause?: unknown };
+  const msg = (err?.message || String((err?.cause as Error)?.message ?? "") || err?.name || "error").slice(0, 140);
+  return status(e) ? `HTTP ${status(e)}: ${msg.slice(0, 100)}` : `${err?.name ?? "Error"}: ${msg}`;
+};
 /** Quota / overload / transient errors are worth trying the next model for; a 400 (bad request) is not. */
 const retryable = (e: unknown) => {
   const s = status(e);

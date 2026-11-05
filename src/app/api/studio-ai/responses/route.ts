@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { generateText, jsonSchema, Output, tool, type ModelMessage, type ToolChoice, type ToolSet } from "ai";
+import { generateText, jsonSchema, Output } from "ai";
+import { type RespItem, toMessages, toToolChoice, toTools } from "@/lib/ai/responses-bridge";
 import { aiQuota } from "@/lib/ai/limits";
 import { getModel } from "@/lib/ai/model";
 import { clientIp, rateLimit, RateLimitError } from "@/lib/rate-limit";
@@ -17,64 +18,6 @@ import { clientIp, rateLimit, RateLimitError } from "@/lib/rate-limit";
 export const maxDuration = 120;
 
 const MAX_OUTPUT_TOKENS = 6000;
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type RespItem = Record<string, any>;
-
-const textOf = (content: any) =>
-  typeof content === "string" ? content : Array.isArray(content) ? content.map((c: any) => c?.text ?? "").join("") : "";
-
-function toMessages(input: RespItem[]): ModelMessage[] {
-  const out: ModelMessage[] = [];
-  const toolNames = new Map<string, string>();
-  for (const item of input ?? []) {
-    if (item.type === "message" || (!item.type && item.role)) {
-      const text = textOf(item.content);
-      if (!text) continue;
-      if (item.role === "assistant") out.push({ role: "assistant", content: [{ type: "text", text }] });
-      else if (item.role === "system" || item.role === "developer") out.push({ role: "system", content: text });
-      else out.push({ role: "user", content: text });
-    } else if (item.type === "function_call") {
-      toolNames.set(item.call_id, item.name);
-      let args: unknown = {};
-      try {
-        args = JSON.parse(item.arguments || "{}");
-      } catch {
-        args = {};
-      }
-      const part = { type: "tool-call" as const, toolCallId: item.call_id, toolName: item.name, input: args };
-      const last = out.at(-1);
-      // Consecutive calls belong to one assistant turn.
-      if (last?.role === "assistant" && Array.isArray(last.content)) (last.content as any[]).push(part);
-      else out.push({ role: "assistant", content: [part] });
-    } else if (item.type === "function_call_output") {
-      const part = {
-        type: "tool-result" as const,
-        toolCallId: item.call_id,
-        toolName: toolNames.get(item.call_id) ?? "tool",
-        output: { type: "text" as const, value: typeof item.output === "string" ? item.output : JSON.stringify(item.output) },
-      };
-      const last = out.at(-1);
-      if (last?.role === "tool") (last.content as any[]).push(part);
-      else out.push({ role: "tool", content: [part] });
-    }
-    // Reasoning items from earlier turns are not replayed.
-  }
-  return out;
-}
-
-function toTools(tools: RespItem[] | undefined): ToolSet | undefined {
-  if (!tools?.length) return undefined;
-  return Object.fromEntries(
-    tools.filter((t) => t.type === "function").map((t) => [t.name, tool({ description: t.description ?? "", inputSchema: jsonSchema(t.parameters ?? { type: "object" }) })]),
-  );
-}
-
-function toToolChoice(choice: any): ToolChoice<ToolSet> | undefined {
-  if (choice === "auto" || choice === "none" || choice === "required") return choice;
-  if (choice?.type === "function" && choice.name) return { type: "tool", toolName: choice.name };
-  return undefined;
-}
 
 const sse = (event: Record<string, unknown>) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 
@@ -99,6 +42,10 @@ export async function POST(req: Request) {
     return Response.json({ error: { message: "Request body must be JSON." } }, { status: 400 });
   }
 
+  // Dev-only: dump the last request for debugging schema issues.
+  if (process.env.NODE_ENV !== "production" && process.env.STUDIO_AI_DUMP) {
+    await import("node:fs").then((fs) => fs.writeFileSync(process.env.STUDIO_AI_DUMP!, JSON.stringify(body)));
+  }
   const tools = toTools(body.tools);
   const format = body.text?.format;
   const wantsJson = format?.type === "json_schema" && format.schema;
