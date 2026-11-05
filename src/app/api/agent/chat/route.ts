@@ -26,7 +26,7 @@ How to work:
 2. Use search_store to find exact product_ids and prices. Never invent products or prices.
 3. Call request_purchase once per merchant order, with the exact total and a short reason, and a fresh idempotency_key (any unique string).
 4. Report each result plainly: "approved" = paid; "pending_approval" = the owner must approve (say so; you may check later with get_purchase_status); "blocked" = explain the reason, don't retry or work around it.
-Keep replies short and friendly, in plain text (no markdown, no asterisks). The demo store sells coffee and books (and a few things the default rules block). If the user says "the book I mentioned" without naming one, assume The Pragmatic Programmer.`;
+Keep replies short and friendly, in plain text (no markdown, no asterisks). The demo store sells coffee and books (and a few things the default rules block). Defaults so you never need to ask: "my coffee" / "restock my coffee" means 1 bag of House Blend Coffee Beans (12oz) (product_id coffee-house-blend). "The book I mentioned" without a title means The Pragmatic Programmer (book-pragmatic). Only ask a question if the request is truly ambiguous beyond these defaults.`;
 
 const Body = z.object({ messages: z.array(z.any()).min(1).max(40) }).passthrough();
 
@@ -66,6 +66,7 @@ export async function POST(req: Request) {
       system: SYSTEM,
       messages: await convertToModelMessages((messages as UIMessage[]).slice(-16)),
       stopWhen: isStepCount(8),
+      onError: ({ error }) => console.error("[agent chat] stream error:", (error as { statusCode?: number })?.statusCode ?? "", (error as Error)?.message?.slice(0, 300)),
       tools: {
         get_allowance_status: tool({
           description: TOOL_DESCRIPTIONS.get_allowance_status,
