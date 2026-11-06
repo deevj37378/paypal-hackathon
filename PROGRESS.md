@@ -44,6 +44,12 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
   - (1) Demo cleanup archives instead of deleting history: expired demo purchases (with timeline events) and their agents (revoked) move to the permanent `usr_archived_demo` user; rules, vaults, Telegram links and the user are deleted. Analytics and merchant views read all store purchases, archived included. DB test added. (Purchases from demos that expired before this fix are gone.)
 - Deev: record the video (docs/VIDEO.md), paste docs/DEVPOST.md into Devpost, add the sandbox buyer login to Devpost's private testing instructions, submit.
 
+  - (2) Studio assistant reliability: the bridge runs each turn model by model; errors and empty turns (no text, no tool calls) move to the next model, and if all are busy a short assistant message is returned (the UI never hangs). Turns cut from ~66k to ~9–10k input tokens (only needed tools; trimmed schemas; capped history). **Live eval, 5 runs per starter: "Refunds by agent this week" 4/5, "Why are purchases blocked?" 4/5 (8/10 overall).** Success = a new widget, mapped, rendering data. Both failures created a mapped widget that rendered no data (likely a filter value matching nothing); typical time 24–33 s, one 182 s while a model was slow.
+  - (3) `/api/studio-ai/responses` locked down: strict same-origin (Origin required), per-browser signed studio session cookie (issued by `/api/studio-ai/session` on page load), 400 KB body cap, rate limits per session (60/h) and per IP (120/h) plus the shared AI quota. Verified live: no Origin 403, foreign Origin 403, no session 401, page flow still works.
+
+## Next
+- Deev: record the video (docs/VIDEO.md), paste docs/DEVPOST.md into Devpost, add the judge sandbox account to the testing instructions, submit.
+
 ## Known issues / decisions
 - **Dev and prod share one Neon database.** Fine for the hackathon; a Neon dev branch would isolate local testing (the payout worker in either environment processes due payouts for all users).
 - **Accounts are per-browser** (no email/password): zero cost, nothing to phish. "Try the demo" seeding comes in M6.
