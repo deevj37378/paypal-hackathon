@@ -3,7 +3,9 @@ import { generateText, jsonSchema, Output } from "ai";
 import { capHistory, type RespItem, toMessages, toToolChoice, toTools } from "@/lib/ai/responses-bridge";
 import { aiQuota } from "@/lib/ai/limits";
 import { getModel, runWithChain } from "@/lib/ai/model";
+import { assertSameOriginStrict, ForbiddenError } from "@/lib/http";
 import { clientIp, rateLimit, RateLimitError } from "@/lib/rate-limit";
+import { getStudioSessionId } from "@/lib/studio-session";
 
 /**
  * Bridge for AG Studio's AI assistant on /store/analytics.
@@ -18,13 +20,27 @@ import { clientIp, rateLimit, RateLimitError } from "@/lib/rate-limit";
 export const maxDuration = 120;
 
 const MAX_OUTPUT_TOKENS = 6000;
+/** Studio turns are ~40 KB after trimming; anything far larger isn't from our page. */
+const MAX_BODY_BYTES = 400_000;
 
 const sse = (event: Record<string, unknown>) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 
 export async function POST(req: Request) {
+  // Only our own page, with a per-browser session, may use the shared free AI quota.
   try {
-    await rateLimit(`studio-ai:ip:${clientIp(req)}`, 80, 3600, "dashboard assistant requests");
-    await aiQuota(`studio:${clientIp(req)}`, 80);
+    assertSameOriginStrict(req);
+  } catch (e) {
+    if (e instanceof ForbiddenError) return Response.json({ error: { message: e.message } }, { status: 403 });
+    throw e;
+  }
+  const sid = await getStudioSessionId();
+  if (!sid) return Response.json({ error: { message: "Your dashboard session expired. Reload the page to use the assistant." } }, { status: 401 });
+  const length = Number(req.headers.get("content-length") ?? 0);
+  if (length > MAX_BODY_BYTES) return Response.json({ error: { message: "Request too large." } }, { status: 413 });
+  try {
+    await rateLimit(`studio-ai:sid:${sid}`, 60, 3600, "assistant requests from this browser");
+    await rateLimit(`studio-ai:ip:${clientIp(req)}`, 120, 3600, "dashboard assistant requests");
+    await aiQuota(`studio:${sid}`, 60);
   } catch (e) {
     if (e instanceof RateLimitError) {
       return Response.json({ error: { message: `${e.message} The free AI quota is shared by everyone trying the demo.` } }, { status: 429 });
@@ -36,7 +52,9 @@ export async function POST(req: Request) {
 
   let body: RespItem;
   try {
-    body = await req.json();
+    const raw = await req.text();
+    if (raw.length > MAX_BODY_BYTES) return Response.json({ error: { message: "Request too large." } }, { status: 413 });
+    body = JSON.parse(raw);
   } catch {
     return Response.json({ error: { message: "Request body must be JSON." } }, { status: 400 });
   }

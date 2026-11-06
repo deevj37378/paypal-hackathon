@@ -62,3 +62,13 @@ export function assertSameOrigin(req: Request) {
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   if (!host || new URL(origin).host !== host) throw new ForbiddenError("Cross-site request blocked.");
 }
+
+/**
+ * Stricter same-origin check for endpoints that must only be called by our own pages:
+ * the Origin header is required (non-browser clients don't send one) and must match the host.
+ */
+export function assertSameOriginStrict(req: Request) {
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (!origin || !host || new URL(origin).host !== host) throw new ForbiddenError("This endpoint only accepts requests from Allowance's own pages.");
+}

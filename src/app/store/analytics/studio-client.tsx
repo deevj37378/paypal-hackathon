@@ -2,7 +2,7 @@
 
 import { AgStudioAiModule, enableStudioDevValidations, type AgStudioApi, type AgStudioMode } from "ag-studio";
 import { AgStudio, AgStudioProvider, createWidgets } from "ag-studio-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnalyticsData } from "@/lib/analytics/data";
 import { buildAi } from "./studio/ai";
 import { buildStudioData } from "./studio/data";
@@ -17,6 +17,10 @@ export default function StudioClient({ data, licenseKey, aiEnabled }: { data: An
   const apiRef = useRef<AgStudioApi | null>(null);
   const [mode, setMode] = useState<AgStudioMode>("view");
   const studioData = useMemo(() => buildStudioData(data), [data]);
+  // Per-browser session for the AI assistant (the bridge refuses requests without it).
+  useEffect(() => {
+    if (aiEnabled) fetch("/api/studio-ai/session", { method: "POST" }).catch(() => {});
+  }, [aiEnabled]);
   const ai = useMemo(() => (aiEnabled ? buildAi() : undefined), [aiEnabled]);
   const widgets = useMemo(
     () =>
