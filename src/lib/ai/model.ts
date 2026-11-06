@@ -88,6 +88,30 @@ async function tryChain<T>(cands: Candidate[], call: (m: LanguageModelV4) => Pro
   throw last;
 }
 
+/**
+ * Run `call` across the tier's chain, model by model, until `accept` says the result is usable.
+ * Errors follow the same cooldown rules as the middleware; an unacceptable (e.g. empty) result just
+ * moves on to the next model. Returns null if no model produced an acceptable result.
+ */
+export async function runWithChain<T>(tier: Tier, call: (m: LanguageModelV4, name: string) => PromiseLike<T>, accept: (r: T) => boolean): Promise<T | null> {
+  let lastError: unknown;
+  for (const c of ordered(chain(tier))) {
+    try {
+      const r = await call(c.model, c.name);
+      if (accept(r)) return r;
+      console.warn(`[ai] ${c.name} returned an empty turn, trying the next model`);
+    } catch (e) {
+      lastError = e;
+      if (!retryable(e)) throw e;
+      const daily = /quota/i.test((e as Error)?.message ?? "");
+      cooldownUntil.set(c.name, Date.now() + (daily ? QUOTA_COOLDOWN_MS : COOLDOWN_MS));
+      console.warn(`[ai] ${c.name} failed (${label(e)}), trying the next model`);
+    }
+  }
+  if (lastError) throw lastError;
+  return null;
+}
+
 /** Middleware that runs every model call (each agent step) through the fallback chain. */
 function chainMiddleware(cands: Candidate[]): LanguageModelV4Middleware {
   return {

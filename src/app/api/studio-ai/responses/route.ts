@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { generateText, jsonSchema, Output } from "ai";
-import { type RespItem, toMessages, toToolChoice, toTools } from "@/lib/ai/responses-bridge";
+import { capHistory, type RespItem, toMessages, toToolChoice, toTools } from "@/lib/ai/responses-bridge";
 import { aiQuota } from "@/lib/ai/limits";
-import { getModel } from "@/lib/ai/model";
+import { getModel, runWithChain } from "@/lib/ai/model";
 import { clientIp, rateLimit, RateLimitError } from "@/lib/rate-limit";
 
 /**
@@ -32,8 +32,7 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  const model = getModel("studio");
-  if (!model) return Response.json({ error: { message: "The dashboard assistant is not configured on this server." } }, { status: 503 });
+  if (!getModel("studio")) return Response.json({ error: { message: "The dashboard assistant is not configured on this server." } }, { status: 503 });
 
   let body: RespItem;
   try {
@@ -50,27 +49,50 @@ export async function POST(req: Request) {
   const format = body.text?.format;
   const wantsJson = format?.type === "json_schema" && format.schema;
 
-  let result;
+  const messages = toMessages(capHistory(body.input));
+  const system = typeof body.instructions === "string" ? body.instructions : undefined;
+  const toolChoice = tools ? toToolChoice(body.tool_choice) : undefined;
+
+  // One turn, model by model: a model that errors OR returns an empty turn (no text, no tool calls)
+  // hands over to the next one, so the assistant never stops silently.
+  let result: Awaited<ReturnType<typeof generateText>> | null = null;
   try {
-    result = await generateText({
-      model,
-      system: typeof body.instructions === "string" ? body.instructions : undefined,
-      messages: toMessages(body.input),
-      tools,
-      toolChoice: tools ? toToolChoice(body.tool_choice) : undefined,
-      ...(wantsJson && !tools ? { output: Output.object({ schema: jsonSchema(format.schema) }) } : {}),
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      maxRetries: 1,
-      abortSignal: req.signal,
-    });
+    result = await runWithChain(
+      "studio",
+      (m) =>
+        generateText({
+          model: m,
+          system,
+          messages,
+          tools,
+          toolChoice,
+          ...(wantsJson && !tools ? { output: Output.object({ schema: jsonSchema(format.schema) }) } : {}),
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          maxRetries: 0,
+          abortSignal: req.signal,
+        }),
+      (r) => Boolean(r.text?.trim()) || r.toolCalls.length > 0 || (wantsJson && r.output !== undefined),
+    );
   } catch (e) {
     console.error("[studio-ai] turn failed:", (e as Error).message?.slice(0, 300));
     const busy = /quota|rate|429|overloaded|503/i.test((e as Error).message ?? "");
-    return Response.json(
-      { error: { message: busy ? "The free AI models are busy for a moment. Please send your message again." : "The assistant couldn't complete that step." } },
-      { status: busy ? 429 : 502 },
+    if (!busy) {
+      return Response.json({ error: { message: "The assistant couldn't complete that step." } }, { status: 502 });
+    }
+  }
+  if (!result) {
+    // Every model was busy or empty: answer with a short message instead of hanging.
+    const fallback = "The free AI models are busy right now, so I stopped here. Please ask again in a minute.";
+    return new Response(
+      sse({ type: "response.output_item.added", item: { id: "msg_busy", type: "message", role: "assistant", status: "in_progress", content: [] } }) +
+        sse({ type: "response.output_text.delta", item_id: "msg_busy", delta: fallback }) +
+        sse({ type: "response.output_item.done", item: { id: "msg_busy", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: fallback, annotations: [] }] } }) +
+        sse({ type: "response.completed", response: { id: `resp_${randomUUID()}`, created_at: Math.floor(Date.now() / 1000), model: "allowance-ai", status: "completed", output: [{ id: "msg_busy", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: fallback, annotations: [] }] }] } }),
+      { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store" } },
     );
   }
+
+  console.log(`[studio-ai] turn ok model=${result.response?.modelId} in=${result.usage?.inputTokens} out=${result.usage?.outputTokens} calls=${result.toolCalls.map((c) => c.toolName).join(",") || "-"}`);
 
   // Emit the turn as OpenAI Responses-API stream events (the subset the adapter reads).
   const responseId = `resp_${randomUUID()}`;

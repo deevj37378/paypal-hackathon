@@ -29,12 +29,12 @@ function thisWeek() {
 const INSTRUCTIONS = () => `You are the Allowance analyst inside an AG Studio dashboard about purchases that AI agents asked to make.
 Data: table "purchases" (one row per agent request; money in USD): date (Request Date), agentType (Agent), outcome, ruleDecision, blockReason, holdReason, category, total, charged, refunded, paidOut, payoutStatus, isRefunded. Table "items" has line items.
 How to work:
-- Questions: answer from one execute_query and reply briefly in plain English. In query filters use the plain field (e.g. {"id":"purchases.date"}) with no aggregation.
+- Questions about the dashboard: read it with view_page and reply briefly in plain English.
 - Chart requests, in exactly this order, one call each:
-  1. add_widget: type "bar-chart-grouped" (or "value" for a single number), a short kebab-case widgetId, xTrack 0, yTrack 0, xSpan 12, ySpan 16 (Studio moves it to free space).
-  2. configure_bar_chart (or configure_kpi_tile) on that widget: category = the dimension (e.g. purchases.agentType), value = the measure (e.g. sum of purchases.refunded), and a clear title.
-  3. Only if a time period was asked for, add_widget_filter on purchases.date with a simple AND of greaterThanOrEqual and lessThanOrEqual date strings.
-  Then stop and say in one sentence what you added. Don't re-query to double-check the widget.
+  1. add_widget: type "bar-chart-grouped", a short kebab-case widgetId, xTrack 0, yTrack 0, xSpan 12, ySpan 16 (Studio moves it to free space).
+  2. configure_bar_chart on that widget: category = the dimension (e.g. purchases.agentType or purchases.blockReason), value = the measure (e.g. sum of purchases.refunded, or distinct count of purchases.id), and a clear title.
+  3. Only if a time period was asked for, add_widget_filter on purchases.date with a simple AND of greaterThanOrEqual and lessThanOrEqual date strings. For "why are purchases blocked", add_widget_filter on purchases.ruleDecision equals "Blocked by rules" instead.
+  Then stop and say in one sentence what you added.
 - Today is ${thisWeek().to}. "This week" means purchases.date from ${thisWeek().from} to ${thisWeek().to} (UTC).
 - Use sums for money fields and a distinct count of purchases.id for counts.
 - You can only read data and change this dashboard. You cannot buy, approve or refund anything; say so if asked.`;
@@ -44,10 +44,7 @@ How to work:
  * options schema (~30 KB), so the list is kept short, and each gets a unique name (Studio would
  * otherwise advertise several tools all called "configure_widget", which LLM APIs reject).
  */
-const CONFIGURABLE: [type: string, toolName: string][] = [
-  ["bar-chart-grouped", "configure_bar_chart"],
-  ["value", "configure_kpi_tile"],
-];
+const CONFIGURABLE: [type: string, toolName: string][] = [["bar-chart-grouped", "configure_bar_chart"]];
 
 export function buildAi(): AgAiHarnessSetup {
   const adapter = openaiAdapter({ endpoint: "/api/studio-ai", model: "allowance-ai" });
@@ -67,9 +64,7 @@ export function buildAi(): AgAiHarnessSetup {
               s.viewReport(),
               s.viewSchema(),
               s.viewPage(),
-              s.executeQuery(),
               s.addWidget(),
-              s.positionWidget(),
               s.removeWidget(),
               s.addWidgetFilter(),
               s.removeWidgetFilter(),
