@@ -17,7 +17,7 @@
 | 1:35–1:50 | Back in Claude Desktop: "Did the book go through?" → get_purchase_status → approved | "Claude checks back and sees it went through. The agent never sees my PayPal account, and it can't approve itself." |
 | 1:50–2:05 | Dashboard guided demo: click **Agent tries a mug** → Blocked with reason; click into the purchase → stepper + rule check + AI explanation | "Anything against my rules is blocked, and the agent gets a plain-English reason. Every purchase has a timeline: requested, rule check, approval, charged, and the store paid out through PayPal Payouts after a short refund window." |
 | 2:05–2:13 | Purchases table: **Refund** the coffee (inline confirm) → Refunded | "Refunds are one tap, and a refund after a payout is clawed back from the merchant automatically." |
-| 2:13–2:23 | `/store/analytics` (AG Studio): click **Blocked by rules** in the decision flow → every widget filters; switch to Edit layout, click "Refunds by agent this week" → a widget appears | "The merchant gets live analytics built with AG Studio. Click a rule decision and the whole dashboard filters, and Studio's AI agents, running on our free Gemini setup, build new charts on request." |
+| 2:13–2:23 | `/store/analytics` (AG Studio): click **Blocked by rules** in the decision flow → every widget filters; switch to Edit layout, click the starter **"Why are purchases blocked?"** → the new chart scrolls into view with a highlight (cut the ~30 s wait in editing) | "The merchant gets live analytics built with AG Studio. Click a rule decision and the whole dashboard filters, and Studio's AI agents, running on our free Gemini setup, build new charts on request." |
 | 2:23–2:33 | Agents page: **Revoke** Claude Desktop → in Claude ask "buy a decaf" → "This agent's access was revoked by its owner." | "And if an agent misbehaves, the kill switch revokes it on its very next request, even mid-conversation." |
 | 2:33–2:43 | Landing "Built with" row, then the URL on screen | "Allowance is built on PayPal Vault, Orders, Payouts, Refunds, Webhooks and the Catalog API, with an MCP server and Gemini. Try the demo at the link below: no sign-up, sandbox only." |
 
@@ -25,6 +25,11 @@
 - Close-up of the rule check panel ("Decided by Allowance's deterministic checker, not by AI").
 - `npm run test:db` output showing "5 parallel $30 vs $100 → 3 reserved" (2 seconds, for the technical judges).
 - The Rules diff: "Kept your $40 per-order limit (not mentioned)."
+
+**Before recording the AG Studio shot**
+- Run a demo story first (coffee, book, mug, new store) so the dashboard has fresh data.
+- Use the starter **"Why are purchases blocked?"**: it's the most reliable one (see PROGRESS.md for the live success rate). It takes ~30 s; record it once, keep the take where the chart lands, and cut the wait.
+- Avoid other heavy AI use just before recording: the free Gemini quota is shared.
 
 **Tips**
 - Keep the cursor still while speaking; zoom into key UI with your recorder's zoom (Screen Studio, or the macOS Screenshot toolbar + iMovie zoom).

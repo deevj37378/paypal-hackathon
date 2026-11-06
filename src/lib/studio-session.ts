@@ -12,13 +12,14 @@ const COOKIE = "alw_studio";
 const TTL = 12 * 3600;
 const key = () => new TextEncoder().encode(env().SESSION_SECRET);
 
-export async function issueStudioSession() {
+/** Returns the existing session, or issues a new one (`fresh` tells the caller to rate-limit it). */
+export async function issueStudioSession(): Promise<{ sid: string; fresh: boolean }> {
   const existing = await getStudioSessionId();
-  if (existing) return existing;
+  if (existing) return { sid: existing, fresh: false };
   const sid = randomUUID();
   const token = await new SignJWT({}).setProtectedHeader({ alg: "HS256" }).setSubject(sid).setAudience("studio").setIssuedAt().setExpirationTime(`${TTL}s`).sign(key());
   (await cookies()).set(COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/api/studio-ai", maxAge: TTL });
-  return sid;
+  return { sid, fresh: true };
 }
 
 export async function getStudioSessionId(): Promise<string | null> {

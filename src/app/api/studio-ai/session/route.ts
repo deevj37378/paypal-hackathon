@@ -1,12 +1,13 @@
 import { assertSameOriginStrict, errorResponse } from "@/lib/http";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { issueStudioSession } from "@/lib/studio-session";
+import { getStudioSessionId, issueStudioSession } from "@/lib/studio-session";
 
 /** Called by /store/analytics on load: issues the per-browser session the AI bridge requires. */
 export async function POST(req: Request) {
   try {
     assertSameOriginStrict(req);
-    await rateLimit(`studio-session:ip:${clientIp(req)}`, 30, 3600, "dashboard sessions");
+    // Only brand-new sessions count against the per-IP limit; a reload keeps its session.
+    if (!(await getStudioSessionId())) await rateLimit(`studio-session:ip:${clientIp(req)}`, 30, 3600, "dashboard sessions");
     await issueStudioSession();
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   } catch (e) {
