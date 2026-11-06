@@ -40,7 +40,8 @@ Live: https://allowance-eight-eta.vercel.app (Vercel Hobby, auto-deploys on push
   - Studio assistant (Nov 6, after the quota reset): **verified on the live site.** "Show refunds by agent this week" → add_widget → configure_bar_chart (agentType × sum refunded) → add_widget_filter (2026-11-02..06) → one-sentence summary; the chart shows real data (Claude (MCP) refunds). About 45 s, all on our Gemini chain via the Responses bridge. Fixes that got it there: one flat-toolset analyst agent, unique configure-tool names, a Gemini-only studio chain, concrete dates, and explicit step order. The AG Studio license key is in Vercel (no license warnings).
   - Note for the video: analytics only covers live accounts, and demo accounts are deleted after 24 h, so run a demo story shortly before recording so the dashboard and the "this week" refunds have data.
 
-## Next
+- **Nov 6 review fixes:**
+  - (1) Demo cleanup archives instead of deleting history: expired demo purchases (with timeline events) and their agents (revoked) move to the permanent `usr_archived_demo` user; rules, vaults, Telegram links and the user are deleted. Analytics and merchant views read all store purchases, archived included. DB test added. (Purchases from demos that expired before this fix are gone.)
 - Deev: record the video (docs/VIDEO.md), paste docs/DEVPOST.md into Devpost, add the sandbox buyer login to Devpost's private testing instructions, submit.
 
 ## Known issues / decisions

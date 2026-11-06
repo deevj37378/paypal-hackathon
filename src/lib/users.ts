@@ -62,13 +62,34 @@ export async function getActiveVault(userId: string, ex: DbExecutor = db()) {
   };
 }
 
-/** Delete expired demo accounts (purchases, agents, rules cascade). */
+/**
+ * Permanent owner of purchase history from expired demo accounts, so merchant analytics keep
+ * every agent purchase (judges look weeks later). Not a login: no session ever points at it.
+ */
+export const ARCHIVE_USER_ID = "usr_archived_demo";
+
+async function ensureArchiveUser() {
+  await db().insert(schema.users).values({ id: ARCHIVE_USER_ID, name: "Archived demo", isDemo: 1, expiresAt: null }).onConflictDoNothing();
+}
+
+/**
+ * Expired demo accounts: purchases (with their timeline events) and agents move to the archive
+ * user; rules, vault rows, Telegram links and the user itself are deleted (cascade).
+ */
 export async function cleanupExpiredDemos(limit = 50) {
   const rows = await db()
     .select({ id: schema.users.id })
     .from(schema.users)
     .where(and(eq(schema.users.isDemo, 1), lt(schema.users.expiresAt, new Date())))
     .limit(limit);
-  if (rows.length) await db().delete(schema.users).where(inArray(schema.users.id, rows.map((r) => r.id)));
-  return rows.length;
+  if (!rows.length) return 0;
+  const ids = rows.map((r) => r.id);
+  await ensureArchiveUser();
+  await db().update(schema.purchases).set({ userId: ARCHIVE_USER_ID, idempotencyKey: null }).where(inArray(schema.purchases.userId, ids));
+  await db()
+    .update(schema.agents)
+    .set({ userId: ARCHIVE_USER_ID, status: "revoked", revokedAt: new Date() })
+    .where(inArray(schema.agents.userId, ids));
+  await db().delete(schema.users).where(inArray(schema.users.id, ids));
+  return ids.length;
 }
