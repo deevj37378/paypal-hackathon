@@ -6,8 +6,13 @@ import type { AllowanceRegistry } from "./registry";
 
 type FieldSpec = [id: string, name: string, format: AgFormat<AllowanceRegistry>, hide?: boolean];
 const USD = { format: "$#,##0.00" };
+// "Nov 5" / "Nov 5, 6:33 PM UTC". Date-only values are parsed as local midnight, so they are
+// formatted in local time (formatting them in UTC would shift the day); timestamps stay in UTC.
+const DAY = { format: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }) };
+const DAY_TIME = { format: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }) };
+const OPTIONS: Partial<Record<string, object>> = { currencyFormat: USD, dateFormat: DAY, dateTimeFormat: DAY_TIME };
 const fields = (specs: FieldSpec[]): AgFieldDefinition<AllowanceRegistry>[] =>
-  specs.map(([id, name, format, hide]) => ({ id, name, format, ...(format === "currencyFormat" && { formatOptions: USD }), ...(hide && { hide }) }));
+  specs.map(([id, name, format, hide]) => ({ id, name, format, ...(OPTIONS[format as string] && { formatOptions: OPTIONS[format as string] }), ...(hide && { hide }) })) as AgFieldDefinition<AllowanceRegistry>[];
 const sumOf = (id: string) => ({ id, aggregation: "sum" as const });
 const ratio = (id: string, name: string, description: string, numerator: string, denominator: string): AgExpressionFieldDefinition<AllowanceRegistry> => ({
   id,
@@ -37,7 +42,8 @@ export function buildStudioData(data: AnalyticsData): AgDataSourcesDefinition<Al
         fields: fields([
           ["id", "Purchase ID", "textFormat", true],
           ["date", "Request Date", "dateFormat"],
-          ["createdAt", "Requested At", "dateTimeFormat", true],
+          ["day", "Day", "textFormat"],
+          ["createdAt", "Requested At", "dateTimeFormat"],
           ["merchant", "Merchant", "textFormat"],
           ["agentType", "Agent", "textFormat"],
           ["outcome", "Outcome", "textFormat"],
@@ -46,7 +52,7 @@ export function buildStudioData(data: AnalyticsData): AgDataSourcesDefinition<Al
           ["holdReason", "Hold Reason", "textFormat"],
           ["category", "Category", "textFormat"],
           ["itemCount", "Items", "integerFormat"],
-          ["total", "Requested Amount", "currencyFormat"],
+          ["total", "Requested", "currencyFormat"],
           ["charged", "Charged", "currencyFormat"],
           ["isCharged", "Was Charged", "booleanFormat"],
           ["isRefunded", "Was Refunded", "booleanFormat"],

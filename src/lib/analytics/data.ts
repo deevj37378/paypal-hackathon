@@ -10,13 +10,14 @@ import { STORE_MERCHANTS } from "@/lib/store/catalog";
 export type PurchaseRow = {
   id: string;
   date: string; // YYYY-MM-DD (UTC)
+  day: string; // "Nov 3": a category label for per-day charts (sorted by date in the report)
   createdAt: string; // ISO
   merchant: string;
   agentType: string;
   outcome: string; // what the deterministic checker decided, incl. the human step
   ruleDecision: string; // approved | held | blocked (checker only)
-  blockReason: string | null; // the first rule that blocked it
-  holdReason: string | null;
+  blockReason: string; // the first rule that blocked it, or "Not blocked"
+  holdReason: string; // or "Not held"
   category: string; // main category of the order
   itemCount: number;
   total: number;
@@ -34,6 +35,18 @@ export type ItemRow = { id: string; purchaseId: string; product: string; categor
 export type MerchantRow = { id: string; name: string; clawbackOutstanding: number };
 export type AnalyticsData = { purchases: PurchaseRow[]; items: ItemRow[]; merchants: MerchantRow[]; asOf: string };
 
+/**
+ * "Nov 3" as a category label whose plain alphabetical order is chronological (charts sort it as
+ * text): invisible zero-width spaces sort after letters and digits, so a month-indexed prefix puts
+ * Dec after Nov, and one before two-digit days puts Nov 3 before Nov 10. Screen readers skip them.
+ */
+const ZWSP = "\u200b";
+function dayLabel(d: Date) {
+  const month = d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const day = d.getUTCDate();
+  return `${ZWSP.repeat(d.getUTCMonth())}${month} ${day >= 10 ? ZWSP : ""}${day}`;
+}
+
 const agentType = (name: string | null, keyPrefix: string | null) => {
   if (keyPrefix === "builtin") return "Built-in assistant";
   if (!name) return "Deleted agent";
@@ -41,6 +54,22 @@ const agentType = (name: string | null, keyPrefix: string | null) => {
   if (/chatgpt|openai|gpt/i.test(name)) return "ChatGPT";
   if (/smoke|test|inspector|race|wh agent/i.test(name)) return "Test agent";
   return "Other MCP / REST agent";
+};
+
+/** What each rule-check label means when it blocks or holds an order (readable chart labels). */
+const BLOCK_LABEL: Record<string, string> = {
+  "Valid order": "Total didn't match",
+  Currency: "Wrong currency",
+  "Merchant allowed": "Merchant blocked",
+  Categories: "Category not allowed",
+  "Per-order limit": "Over per-order limit",
+  "Monthly limit": "Over monthly limit",
+  "PayPal linked": "PayPal not linked",
+  "Spending rules": "No rules set",
+};
+const HOLD_LABEL: Record<string, string> = {
+  "Approval threshold": "Over ask-me amount",
+  "New merchant": "New merchant",
 };
 
 const OUTCOME: Record<string, string> = {
@@ -83,13 +112,14 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     purchases.push({
       id: p.id,
       date: p.createdAt.toISOString().slice(0, 10),
+      day: dayLabel(p.createdAt),
       createdAt: p.createdAt.toISOString(),
       merchant: merchantName,
       agentType: type,
       outcome,
       ruleDecision: p.decision.outcome === "approved" ? "Approved by rules" : p.decision.outcome === "pending_approval" ? "Held for approval" : "Blocked by rules",
-      blockReason: blocked?.label ?? null,
-      holdReason: held?.label ?? null,
+      blockReason: blocked ? (BLOCK_LABEL[blocked.label] ?? blocked.label) : "Not blocked",
+      holdReason: held ? (HOLD_LABEL[held.label] ?? held.label) : "Not held",
       category: main?.category ?? "unknown",
       itemCount: p.items.reduce((s, i) => s + i.quantity, 0),
       total: p.totalCents / 100,

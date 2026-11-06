@@ -23,9 +23,9 @@ const kpi = (text: string, value: { id: string; aggregation?: "sum" | "countd" }
 const overview: AgPageState<AllowanceRegistry> = {
   id: "overview",
   widgets: {
-    "kpi-requests": kpi("Agent requests", countd("purchases.id"), "calendar::day"),
-    "kpi-charged": kpi("Charged to PayPal", sum("purchases.charged"), "calendar::day"),
-    "kpi-paid-out": kpi("Paid out to merchants", sum("purchases.paidOut"), "calendar::day"),
+    "kpi-requests": kpi("Agent requests", countd("purchases.id")),
+    "kpi-charged": kpi("Charged", sum("purchases.charged")),
+    "kpi-paid-out": kpi("Paid out", sum("purchases.paidOut")),
     "kpi-refunded": kpi("Refunded", sum("purchases.refunded")),
     agent: {
       type: "button-filter",
@@ -59,10 +59,12 @@ const overview: AgPageState<AllowanceRegistry> = {
     "spend-by-category": {
       type: "column-chart-stacked",
       dataMapping: {
-        categoryKey: [{ id: "calendar::day" }],
+        categoryKey: [{ id: "purchases.day" }],
         valueKey: [sum("purchases.charged")],
         legendKey: [{ id: "purchases.category" }],
       },
+      // Day labels sort chronologically as text (see dayLabel in src/lib/analytics/data.ts).
+      sort: [{ field: { id: "purchases.day" }, direction: "asc" }],
       format: { ...title("Charged by category over time"), style: { theme: { common: { legend: { enabled: true } } } } },
     },
     payouts: {
@@ -73,14 +75,15 @@ const overview: AgPageState<AllowanceRegistry> = {
     "recent": {
       type: "grid",
       dataMapping: {
+        // Plain (unaggregated) fields: one row per request, headers without "(sum)".
         cols: [
           { id: "purchases.createdAt" },
           { id: "purchases.agentType" },
           { id: "purchases.outcome" },
           { id: "purchases.blockReason" },
           { id: "purchases.category" },
-          sum("purchases.total"),
-          sum("purchases.charged"),
+          { id: "purchases.total" },
+          { id: "purchases.charged" },
           { id: "purchases.payoutStatus" },
         ],
       },
@@ -102,8 +105,15 @@ const overview: AgPageState<AllowanceRegistry> = {
     recent: at(0, 55, 24, 20),
   },
   filter: {
-    // Only blocked purchases have a block reason; hide the blank slice.
-    widget: { "block-reasons": [{ field: { id: "purchases.blockReason" }, model: { operator: "isNotBlank" } }] },
+    // Ready-made page filters in the Filters panel (no value set = no filtering).
+    page: [
+      { field: { id: "purchases.agentType" } },
+      { field: { id: "purchases.category" } },
+      { field: { id: "purchases.outcome" } },
+      { field: { id: "purchases.date" } },
+    ],
+    // Only blocked purchases have a block reason.
+    widget: { "block-reasons": [{ field: { id: "purchases.blockReason" }, model: { operator: "notEqual", value: "Not blocked" } }] },
   },
 };
 
