@@ -86,7 +86,7 @@ export function AgentChat({ available, revoked, paypalLinked }: { available: boo
                     </p>
                   ) : (
                     <p key={key} className="max-w-[90%] text-sm leading-relaxed whitespace-pre-wrap">
-                      {part.text}
+                      {cleanReply(part.text)}
                     </p>
                   );
                 }
@@ -173,6 +173,15 @@ function ToolCard({ name, state, output }: { name: string; state: string; output
       {label}
     </div>
   );
+}
+
+/** Safety net: internal ids never reach the user, even if the model mentions one. */
+function cleanReply(text: string) {
+  return text
+    .replace(/\s*\((?:purchase id:?\s*)?`?pur_[a-z0-9]+`?\)/gi, "")
+    .replace(/(?:purchase id:?\s*)?`?pur_[a-z0-9]+`?/gi, "this purchase")
+    .replace(/\bthe owner'?s\b/gi, "your")
+    .replace(/\bthe owner\b/gi, "you");
 }
 
 function friendlyError(msg: string) {
