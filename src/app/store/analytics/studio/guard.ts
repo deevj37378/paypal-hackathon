@@ -193,9 +193,28 @@ export function guardFilterTool(tool: AgAiTool, catalog: Catalog, getApi: () => 
   });
 }
 
-/** Configure tools: afterwards report if the widget renders no data. */
+/**
+ * Clean a chart data mapping before Studio applies it. A legend (series) key must be a plain
+ * dimension: an aggregated legend field (e.g. blockReason with "first") can't be grouped, and the
+ * chart renders "No data" even though rows match. Legend/tooltip entries that just repeat the
+ * category or value fields are dropped too.
+ */
+export function cleanDataMapping(args: any): any {
+  const dm = args?.value?.dataMapping ?? args?.dataMapping;
+  if (!dm || typeof dm !== "object") return args;
+  const ids = (k: string) => (Array.isArray(dm[k]) ? dm[k].map((f: any) => f?.id) : []);
+  const used = new Set([...ids("categoryKey"), ...ids("valueKey")]);
+  const clean = { ...dm };
+  if (Array.isArray(clean.legendKey)) clean.legendKey = clean.legendKey.filter((f: any) => f?.id && !f.aggregation && !used.has(f.id));
+  if (Array.isArray(clean.tooltipKey)) clean.tooltipKey = clean.tooltipKey.filter((f: any) => f?.id && !used.has(f.id));
+  return args.value?.dataMapping ? { ...args, value: { ...args.value, dataMapping: clean } } : { ...args, dataMapping: clean };
+}
+
+/** Configure tools: clean the data mapping first; afterwards report if the widget renders no data. */
 export function guardConfigureTool(tool: AgAiTool, getApi: () => AgStudioApi | null, rows: PurchaseRow[]) {
-  return wrapTool(tool, async (call, _ctx, run) => withEmptyNote(await run(call), call.args?.widgetId, getApi, rows));
+  return wrapTool(tool, async (call, _ctx, run) =>
+    withEmptyNote(await run({ ...call, args: cleanDataMapping(call.args) }), call.args?.widgetId, getApi, rows),
+  );
 }
 
 function withEmptyNote(res: any, widgetId: string | undefined, getApi: () => AgStudioApi | null, rows: PurchaseRow[]) {
@@ -261,4 +280,23 @@ export function withResultCheck(inner: AgLlmAdapter, check: () => string | null)
       return { stream: { [Symbol.asyncIterator]: () => it }, complete } as ReturnType<AgLlmAdapter["executeTurn"]>;
     },
   };
+}
+
+/**
+ * What the page actually shows: new widgets whose Studio overlay says "No data to display", whatever
+ * the cause (a filter, or a mapping Studio can't group by). Matched by widget title.
+ */
+export function renderedEmptyNewWidgets(api: AgStudioApi): { id: string; title: string }[] {
+  if (typeof document === "undefined") return [];
+  const s: any = api.getState();
+  const page = s?.pages?.find((p: any) => p.id === s.selectedPageId);
+  const out: { id: string; title: string }[] = [];
+  for (const id of Object.keys(page?.widgets ?? {}).filter((w) => !BASE_WIDGETS.includes(w))) {
+    const title: string | undefined = page.widgets[id]?.format?.title?.text;
+    if (!title) continue;
+    const label = [...document.querySelectorAll(".ag-studio-layout-widget-label")].find((el) => el.textContent?.trim() === title.trim());
+    const widget = label?.closest(".ag-studio-layout-widget");
+    if (widget && /No data to display/.test(widget.textContent ?? "")) out.push({ id, title });
+  }
+  return out;
 }

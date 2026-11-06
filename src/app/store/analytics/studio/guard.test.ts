@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnalyticsData, PurchaseRow } from "@/lib/analytics/data";
-import { buildCatalog, checkFilterArgs, checkWidget, emptyNewWidgets, resolveValue, withResultCheck } from "./guard";
+import { buildCatalog, checkFilterArgs, checkWidget, cleanDataMapping, emptyNewWidgets, resolveValue, withResultCheck } from "./guard";
 
 const row = (o: Partial<PurchaseRow>): PurchaseRow => ({
   id: Math.random().toString(36), date: "2026-11-03", day: "Nov 3", createdAt: "2026-11-03T10:00:00Z", merchant: "Bean & Page",
@@ -41,6 +41,18 @@ describe("analytics assistant guard", () => {
     const blockedOnly = { field: { id: "purchases.ruleDecision" }, model: { operator: "equals", value: "Blocked by rules" } };
     // Blocked purchases have no refunds: rows exist but the value is all zero → counts as empty.
     expect(emptyNewWidgets(apiWith({ w }, { w: [blockedOnly] }), rows).map((c) => c.id)).toEqual(["w"]);
+  });
+  it("drops aggregated or redundant legend/tooltip fields from a chart mapping", () => {
+    const args = { op: "patch", value: { dataMapping: {
+      categoryKey: [{ id: "purchases.blockReason" }],
+      valueKey: [{ id: "purchases.id", aggregation: "countd" }],
+      tooltipKey: [{ id: "purchases.id", aggregation: "countd" }],
+      legendKey: [{ id: "purchases.blockReason", aggregation: "first" }],
+    } } };
+    const out = cleanDataMapping(args).value.dataMapping;
+    expect(out.legendKey).toEqual([]);
+    expect(out.tooltipKey).toEqual([]);
+    expect(out.categoryKey).toEqual(args.value.dataMapping.categoryKey);
   });
   it("holds back a 'done' answer once when a new widget is empty", async () => {
     const calls: unknown[] = [];

@@ -1,6 +1,6 @@
 import { createAiHarness, directLlmRunner, type AgAiHarnessSetup, type AgAiPromptStarter, type AgStudioApi } from "ag-studio";
 import type { AnalyticsData } from "@/lib/analytics/data";
-import { buildCatalog, describeCatalog, emptyNewWidgets, guardConfigureTool, guardFilterTool, withResultCheck } from "./guard";
+import { buildCatalog, describeCatalog, emptyNewWidgets, guardConfigureTool, guardFilterTool, renderedEmptyNewWidgets, withResultCheck } from "./guard";
 import { openaiAdapter } from "./openai-adapter";
 
 /**
@@ -34,7 +34,7 @@ How to work:
 - Questions about the dashboard: read it with view_page and reply briefly in plain English.
 - Chart requests, in exactly this order, one call each:
   1. add_widget: type "bar-chart-grouped", a short kebab-case widgetId, xTrack 0, yTrack 0, xSpan 12, ySpan 16 (Studio moves it to free space).
-  2. configure_bar_chart on that widget: category = the dimension (e.g. purchases.agentType or purchases.blockReason), value = the measure (e.g. sum of purchases.refunded, or distinct count of purchases.id), and a clear title.
+  2. configure_bar_chart on that widget: set ONLY categoryKey (the dimension, e.g. purchases.agentType or purchases.blockReason, no aggregation) and valueKey (the measure, e.g. sum of purchases.refunded, or distinct count of purchases.id), plus a clear title. Leave legendKey and tooltipKey empty.
   3. Only if a time period was asked for, add_widget_filter on purchases.date with a simple AND of greaterThanOrEqual and lessThanOrEqual date strings. For "why are purchases blocked", add_widget_filter on purchases.ruleDecision equals "Blocked by rules" instead.
   Then stop and say in one sentence what you added.
 - Today is ${thisWeek().to}. "This week" means purchases.date from ${thisWeek().from} to ${thisWeek().to} (UTC).
@@ -58,9 +58,16 @@ export function buildAi(data: AnalyticsData, getApi: () => AgStudioApi | null): 
   // hold that answer back and give it one turn to fix the widget.
   const adapter = withResultCheck(openaiAdapter({ endpoint: "/api/studio-ai", model: "allowance-ai" }), () => {
     const api = getApi();
-    const empty = api ? emptyNewWidgets(api, data.purchases) : [];
-    if (!empty.length) return null;
-    return `The widget "${empty[0].title}" (${empty[0].id}) shows no data: ${empty[0].rows === 0 ? "no rows match its filters" : "every matching row has 0 for its value"}. Fix its filter using the exact stored values, or remove the filter, so it shows data. Then confirm in one sentence.`;
+    if (!api) return null;
+    const empty = emptyNewWidgets(api, data.purchases);
+    if (empty.length) {
+      return `The widget "${empty[0].title}" (${empty[0].id}) shows no data: ${empty[0].rows === 0 ? "no rows match its filters" : "every matching row has 0 for its value"}. Fix its filter using the exact stored values, or remove the filter, so it shows data. Then confirm in one sentence.`;
+    }
+    const rendered = renderedEmptyNewWidgets(api);
+    if (rendered.length) {
+      return `The widget "${rendered[0].title}" (${rendered[0].id}) displays "No data to display". Reconfigure it with configure_bar_chart using only categoryKey (a plain field) and valueKey (a measure), and leave legendKey/tooltipKey empty, so it shows data. Then confirm in one sentence.`;
+    }
+    return null;
   });
   // 3.1's setup callback types `api` as the core API; at runtime it is the full AgStudioApi.
   return ({ api }) =>
