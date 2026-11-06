@@ -179,7 +179,8 @@ function ToolCard({ name, state, output }: { name: string; state: string; output
 function cleanReply(text: string) {
   return text
     .replace(/\s*\((?:purchase id:?\s*)?`?pur_[a-z0-9]+`?\)/gi, "")
-    .replace(/(?:purchase id:?\s*)?`?pur_[a-z0-9]+`?/gi, "this purchase")
+    .replace(/[;,]?\s*(?:purchase )?id:?\s*`?pur_[a-z0-9]+`?/gi, "")
+    .replace(/`?pur_[a-z0-9]+`?/gi, "this purchase")
     .replace(/\bthe owner'?s\b/gi, "your")
     .replace(/\bthe owner\b/gi, "you");
 }
