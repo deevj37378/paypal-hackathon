@@ -1,4 +1,6 @@
 import { createAiHarness, directLlmRunner, type AgAiHarnessSetup, type AgAiPromptStarter, type AgStudioApi } from "ag-studio";
+import type { AnalyticsData } from "@/lib/analytics/data";
+import { buildCatalog, describeCatalog, emptyNewWidgets, guardConfigureTool, guardFilterTool, withResultCheck } from "./guard";
 import { openaiAdapter } from "./openai-adapter";
 
 /**
@@ -26,7 +28,7 @@ function thisWeek() {
   return { from: monday.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
 }
 
-const INSTRUCTIONS = () => `You are the Allowance analyst inside an AG Studio dashboard about purchases that AI agents asked to make.
+const instructionsFor = (valueList: string) => () => `You are the Allowance analyst inside an AG Studio dashboard about purchases that AI agents asked to make.
 Data: table "purchases" (one row per agent request; money in USD): date (Request Date), agentType (Agent), outcome, ruleDecision, blockReason, holdReason, category, total, charged, refunded, paidOut, payoutStatus, isRefunded. Table "items" has line items.
 How to work:
 - Questions about the dashboard: read it with view_page and reply briefly in plain English.
@@ -37,6 +39,9 @@ How to work:
   Then stop and say in one sentence what you added.
 - Today is ${thisWeek().to}. "This week" means purchases.date from ${thisWeek().from} to ${thisWeek().to} (UTC).
 - Use sums for money fields and a distinct count of purchases.id for counts.
+- Filter values must be EXACTLY one of these stored values (copy them as written; labels you see on screen may differ):
+${valueList}
+- If a tool result says a widget shows NO DATA, fix its filter with exact stored values or remove the filter before you finish.
 - You can only read data and change this dashboard. You cannot buy, approve or refund anything; say so if asked.`;
 
 /**
@@ -46,8 +51,17 @@ How to work:
  */
 const CONFIGURABLE: [type: string, toolName: string][] = [["bar-chart-grouped", "configure_bar_chart"]];
 
-export function buildAi(): AgAiHarnessSetup {
-  const adapter = openaiAdapter({ endpoint: "/api/studio-ai", model: "allowance-ai" });
+export function buildAi(data: AnalyticsData, getApi: () => AgStudioApi | null): AgAiHarnessSetup {
+  const catalog = buildCatalog(data);
+  const instructions = instructionsFor(describeCatalog(catalog));
+  // Never end on an empty chart: if the model says it's done while a widget it added has no data,
+  // hold that answer back and give it one turn to fix the widget.
+  const adapter = withResultCheck(openaiAdapter({ endpoint: "/api/studio-ai", model: "allowance-ai" }), () => {
+    const api = getApi();
+    const empty = api ? emptyNewWidgets(api, data.purchases) : [];
+    if (!empty.length) return null;
+    return `The widget "${empty[0].title}" (${empty[0].id}) shows no data: ${empty[0].rows === 0 ? "no rows match its filters" : "every matching row has 0 for its value"}. Fix its filter using the exact stored values, or remove the filter, so it shows data. Then confirm in one sentence.`;
+  });
   // 3.1's setup callback types `api` as the core API; at runtime it is the full AgStudioApi.
   return ({ api }) =>
     createAiHarness(api as unknown as AgStudioApi, ({ tools }) => ({
@@ -57,7 +71,7 @@ export function buildAi(): AgAiHarnessSetup {
           name: "Allowance analyst",
           adapter,
           maxTurns: 16,
-          instructions: INSTRUCTIONS,
+          instructions,
           tools: () => {
             const s = tools.studio;
             return [
@@ -66,9 +80,9 @@ export function buildAi(): AgAiHarnessSetup {
               s.viewPage(),
               s.addWidget(),
               s.removeWidget(),
-              s.addWidgetFilter(),
+              guardFilterTool(s.addWidgetFilter(), catalog, getApi, data.purchases),
               s.removeWidgetFilter(),
-              ...CONFIGURABLE.map(([widgetType, name]) => s.configureWidget({ widgetType }, { name })),
+              ...CONFIGURABLE.map(([widgetType, name]) => guardConfigureTool(s.configureWidget({ widgetType }, { name }), getApi, data.purchases)),
             ];
           },
         }),

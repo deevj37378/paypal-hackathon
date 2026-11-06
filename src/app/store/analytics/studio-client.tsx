@@ -13,6 +13,9 @@ import { allowanceTheme } from "./studio/theme";
 
 if (process.env.NODE_ENV !== "production") enableStudioDevValidations();
 
+/** The page's one Studio instance, read later by the AI guard (set when Studio's API is ready). */
+const liveStudio: { api: AgStudioApi | null } = { api: null };
+
 export default function StudioClient({ data, licenseKey, aiEnabled }: { data: AnalyticsData; licenseKey?: string; aiEnabled: boolean }) {
   const apiRef = useRef<AgStudioApi | null>(null);
   const [mode, setMode] = useState<AgStudioMode>("view");
@@ -21,7 +24,32 @@ export default function StudioClient({ data, licenseKey, aiEnabled }: { data: An
   useEffect(() => {
     if (aiEnabled) fetch("/api/studio-ai/session", { method: "POST" }).catch(() => {});
   }, [aiEnabled]);
-  const ai = useMemo(() => (aiEnabled ? buildAi() : undefined), [aiEnabled]);
+  const ai = useMemo(() => (aiEnabled ? buildAi(data, () => liveStudio.api) : undefined), [aiEnabled, data]);
+  // Bring widgets the assistant adds into view and highlight them (they land at the bottom).
+  const knownWidgets = useRef<Set<string> | null>(null);
+  const seenEls = useRef(new WeakSet<Element>());
+  const highlightNewWidgets = (state: { selectedPageId?: string; pages?: { id: string; widgets?: Record<string, unknown> }[] }) => {
+    const page = state.pages?.find((p) => p.id === state.selectedPageId);
+    const ids = Object.keys(page?.widgets ?? {});
+    if (!knownWidgets.current) {
+      knownWidgets.current = new Set(ids);
+      document.querySelectorAll(".ag-studio-layout-widget").forEach((el) => seenEls.current.add(el));
+      return;
+    }
+    const added = ids.filter((id) => !knownWidgets.current!.has(id));
+    ids.forEach((id) => knownWidgets.current!.add(id));
+    if (!added.length) return;
+    setTimeout(() => {
+      const fresh = [...document.querySelectorAll(".ag-studio-layout-widget")].filter((el) => !seenEls.current.has(el));
+      fresh.forEach((el) => seenEls.current.add(el));
+      const el = fresh.at(-1);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.remove("alw-new-widget");
+      void (el as HTMLElement).offsetWidth;
+      el.classList.add("alw-new-widget");
+    }, 600);
+  };
   const widgets = useMemo(
     () =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,8 +93,11 @@ export default function StudioClient({ data, licenseKey, aiEnabled }: { data: An
             widgets={widgets}
             ai={ai}
             mode={mode}
+            onStudioReady={(e) => highlightNewWidgets((e.api as unknown as AgStudioApi).getState() as never)}
+            onStateUpdated={(e) => highlightNewWidgets(e.state as never)}
             onApiReady={(e) => {
               apiRef.current = e.api as unknown as AgStudioApi;
+              liveStudio.api = apiRef.current;
               // Read-only debugging/inspection hook (the report state is public data).
               (window as unknown as { allowanceStudio?: AgStudioApi }).allowanceStudio = apiRef.current;
             }}
