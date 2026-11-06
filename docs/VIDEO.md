@@ -28,7 +28,7 @@
 
 **Before recording the AG Studio shot**
 - Run a demo story first (coffee, book, mug, new store) so the dashboard has fresh data.
-- Use the starter **"Why are purchases blocked?"**: it's the most reliable one (see PROGRESS.md for the live success rate). It takes ~30 s; record it once, keep the take where the chart lands, and cut the wait.
+- Use the starter **"Why are purchases blocked?"**: 10/10 on the live site, median ~32 s (the other starter was also 10/10 but slower). Record it once, keep the take where the chart lands and highlights, and cut the wait.
 - Avoid other heavy AI use just before recording: the free Gemini quota is shared.
 
 **Tips**
