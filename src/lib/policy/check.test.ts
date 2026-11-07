@@ -53,6 +53,25 @@ describe("checkPurchase: pace and repeat purchases", () => {
   });
 });
 
+describe("checkPurchase: one-time allowance", () => {
+  const gift: CheckItem = { productId: "g1", name: "Birthday Gift Box", category: "gifts", quantity: 1, unitPriceCents: 5500 };
+  const grant = { id: "ota_1", description: "a birthday gift up to $60 by Friday", amountCents: 6000 };
+  it("without it, a $55 gift is blocked (category, per-order cap)", () => {
+    expect(checkPurchase(input([gift])).outcome).toBe("blocked");
+  });
+  it("with a matching one-time allowance, the $55 gift is approved", () => {
+    const r = checkPurchase(input([gift], {}, { grant }));
+    expect(r.outcome).toBe("approved");
+    expect(r.checks.find((c) => c.id === "one_time")?.detail).toMatch(/birthday gift/);
+  });
+  it("it never overrides the monthly limit, blocked merchants, currency or a price mismatch", () => {
+    expect(checkPurchase(input([gift], {}, { grant, spentThisMonthCents: 14_000 })).outcome).toBe("blocked");
+    expect(checkPurchase(input([gift], {}, { grant }, { ...DEFAULT_POLICY, blockedMerchants: ["demo-store"] })).outcome).toBe("blocked");
+    expect(checkPurchase(input([gift], { currency: "EUR" }, { grant })).outcome).toBe("blocked");
+    expect(checkPurchase(input([gift], { claimedTotalCents: 100 }, { grant })).outcome).toBe("blocked");
+  });
+});
+
 describe("checkPurchase: the demo story", () => {
   it("auto-approves $18 coffee from a trusted merchant", () => {
     const r = checkPurchase(input([coffee]));

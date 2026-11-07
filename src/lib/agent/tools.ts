@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { formatUsd } from "@/lib/money";
+import { grantState, listGrants } from "@/lib/allowances";
 import { RequestPurchaseInput, requestPurchase, spentThisMonthCents, toAgentView } from "@/lib/purchases/service";
 import { rateLimit } from "@/lib/rate-limit";
 import { getActivePolicy, getActiveVault } from "@/lib/users";
@@ -64,7 +65,7 @@ export async function searchStore(agent: Agent, input: z.infer<typeof SearchStor
 }
 
 export async function allowanceStatus(agent: Agent) {
-  const [policy, vault, spent, pending] = await Promise.all([
+  const [policy, vault, spent, pending, grants] = await Promise.all([
     getActivePolicy(agent.userId),
     getActiveVault(agent.userId),
     spentThisMonthCents(agent.userId),
@@ -72,7 +73,9 @@ export async function allowanceStatus(agent: Agent) {
       .select({ n: sql<number>`count(*)::int` })
       .from(schema.purchases)
       .where(and(eq(schema.purchases.userId, agent.userId), eq(schema.purchases.status, "pending_approval"))),
+    listGrants(agent.userId),
   ]);
+  const active = grants.filter((g) => grantState(g) === "active");
   const r = policy?.rules;
   const remaining = r ? Math.max(0, r.monthlyLimitCents - spent) : 0;
   const data = {
@@ -88,6 +91,16 @@ export async function allowanceStatus(agent: Agent) {
     blocked_categories: r?.blockedCategories ?? [],
     new_merchants_need_approval: r?.requireApprovalForNewMerchants ?? false,
     pending_approvals: pending[0]?.n ?? 0,
+    pace_limit: r?.velocity ? `ask after ${r.velocity.maxPurchases} purchases in ${r.velocity.windowMinutes} minutes` : null,
+    repeat_purchases_need_approval_within_days: r?.duplicateWindowDays ?? null,
+    // Single-use permissions the owner granted for a specific task (they cover one matching purchase).
+    one_time_allowances: active.map((g) => ({
+      for: g.description,
+      max_total: (g.amountCents / 100).toFixed(2),
+      category: g.category ?? "any",
+      merchant_id: g.merchantId ?? "any",
+      expires_at: g.expiresAt.toISOString(),
+    })),
   };
   const summary = !r
     ? "The owner hasn't set spending rules yet, so nothing can be bought."
@@ -96,7 +109,10 @@ export async function allowanceStatus(agent: Agent) {
       : `${formatUsd(remaining)} of ${formatUsd(r.monthlyLimitCents)} left this month. ` +
         (r.allowedCategories.length ? `Only ${r.allowedCategories.join(", ")}. ` : "") +
         (r.perOrderLimitCents != null ? `Max ${formatUsd(r.perOrderLimitCents)} per order. ` : "") +
-        (r.approvalThresholdCents != null ? `Orders over ${formatUsd(r.approvalThresholdCents)} need the owner's approval.` : "");
+        (r.approvalThresholdCents != null ? `Orders over ${formatUsd(r.approvalThresholdCents)} need the owner's approval.` : "") +
+        (active.length
+          ? ` One-time allowance${active.length > 1 ? "s" : ""}: ${active.map((g) => `"${g.description}" (one purchase up to ${formatUsd(g.amountCents)}${g.category ? `, ${g.category}` : ""}, until ${g.expiresAt.toISOString().slice(0, 10)})`).join("; ")}. A matching purchase goes through even if it's outside the usual categories or limits.`
+          : "");
   return { summary: summary.trim(), data } satisfies ToolResult<unknown>;
 }
 

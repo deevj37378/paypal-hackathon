@@ -11,6 +11,7 @@ import { checkPurchase, type CheckItem, type CheckResult } from "@/lib/policy/ch
 import { getActivePolicy, getActiveVault, getUser } from "@/lib/users";
 import { issueReceipt } from "@/lib/mandates/receipts";
 import { receiptIdFor } from "@/lib/mandates/mandate";
+import { claimGrant, findMatchingGrant, releaseGrant } from "@/lib/allowances";
 import { logEvent } from "./events";
 import { notifyPurchase } from "./notify";
 
@@ -128,7 +129,9 @@ async function evaluate(ex: DbExecutor, p: {
   currency: string;
   humanApproved?: boolean;
   excludePurchaseId?: string;
-}): Promise<{ result: CheckResult; policyId: string | null }> {
+  /** Only new requests can use a one-time allowance (not re-checks after approval). */
+  allowGrant?: boolean;
+}): Promise<{ result: CheckResult; policyId: string | null; grantId: string | null }> {
   const [policy, vault, spent, purchasedBefore] = await Promise.all([
     getActivePolicy(p.userId, ex),
     getActiveVault(p.userId, ex),
@@ -139,15 +142,17 @@ async function evaluate(ex: DbExecutor, p: {
     const detail = "There are no active spending rules, so nothing can be bought yet.";
     return {
       policyId: null,
+      grantId: null,
       result: { outcome: "blocked", reasons: [detail], checks: [{ id: "policy", label: "Spending rules", status: "block", detail }] },
     };
   }
   const rules = policy.rules;
-  const [recent, lastBought] = await Promise.all([
+  const [recent, lastBought, grant] = await Promise.all([
     rules.velocity ? recentPurchaseCount(p.userId, rules.velocity.windowMinutes, p.excludePurchaseId, ex) : Promise.resolve(0),
     rules.duplicateWindowDays !== null
       ? lastBoughtAt(p.userId, p.items.map((i) => i.productId), rules.duplicateWindowDays, p.excludePurchaseId, ex)
       : Promise.resolve({}),
+    p.allowGrant ? findMatchingGrant(ex, p.userId, { merchantId: p.merchant.id, items: p.items, totalCents: p.totalCents }) : Promise.resolve(null),
   ]);
   const result = checkPurchase({
     policy: rules,
@@ -165,6 +170,7 @@ async function evaluate(ex: DbExecutor, p: {
       humanApproved: p.humanApproved,
       recentPurchaseCount: recent,
       lastBoughtAt: lastBought,
+      grant: grant ? { id: grant.id, description: grant.description, amountCents: grant.amountCents } : undefined,
     },
   });
   if (!vault) {
@@ -173,7 +179,7 @@ async function evaluate(ex: DbExecutor, p: {
     result.outcome = "blocked";
     result.reasons = result.checks.filter((c) => c.status === "block").map((c) => c.detail);
   }
-  return { result, policyId: policy.id };
+  return { result, policyId: policy.id, grantId: grant && result.outcome === "approved" ? grant.id : null };
 }
 
 /** Entry point for agents: validate → price from the store → atomic rule check + reserve → charge. */
@@ -244,7 +250,8 @@ export async function reservePurchase(agent: Agent, input: RequestPurchaseInput,
     const existing = await findByIdempotencyKey(tx, agent.id, input.idempotency_key);
     if (existing) return { purchase: existing, created: false };
 
-    const { result, policyId } = await evaluate(tx, {
+    const { result, policyId, grantId } = await evaluate(tx, {
+      allowGrant: true,
       userId: agent.userId,
       merchant: order.merchant,
       items: order.items,
@@ -253,10 +260,13 @@ export async function reservePurchase(agent: Agent, input: RequestPurchaseInput,
       currency: input.currency,
     });
     const status = result.outcome === "approved" ? "processing" : result.outcome;
+    const id = newId("pur");
+    if (grantId && !(await claimGrant(tx, grantId, id))) throw new Error("One-time allowance was claimed concurrently");
     const [purchase] = await tx
       .insert(schema.purchases)
       .values({
-        id: newId("pur"),
+        id,
+        grantId,
         userId: agent.userId,
         agentId: agent.id,
         merchantId: order.merchant.id,
@@ -350,6 +360,7 @@ export async function markCaptured(purchaseId: string, ids: { orderId?: string |
 }
 
 async function fail(purchase: Purchase, reason: string, data?: unknown) {
+  if (purchase.grantId) await releaseGrant(purchase.id); // nothing was charged: the one-time allowance is free again
   const [updated] = await db()
     .update(schema.purchases)
     .set({ status: "failed", failureReason: reason, updatedAt: new Date() })

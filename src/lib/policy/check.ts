@@ -32,6 +32,12 @@ export type CheckInput = {
     lastBoughtAt?: Record<string, Date>;
     /** Clock for "2 days ago" wording; defaults to now. */
     now?: Date;
+    /**
+     * A one-time allowance this order matches (found by the caller: unused, unexpired, total within
+     * its amount, category and merchant match). It stands in for the scope and approval checks for
+     * exactly this one purchase; integrity, currency, blocked merchants and the monthly limit still apply.
+     */
+    grant?: { id: string; description: string; amountCents: number };
   };
 };
 
@@ -73,13 +79,23 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
     add("merchant_blocked", "Merchant allowed", "pass", `${purchase.merchantName} isn't blocked.`);
   }
 
+  const grant = context.grant;
+  if (grant) {
+    add("one_time", "One-time allowance", "pass", `Covered by your one-time allowance: "${grant.description}" (up to ${formatUsd(grant.amountCents)}, single use).`);
+  }
+  const covered = (id: string, label: string) => {
+    add(id, label, "pass", "Covered by your one-time allowance.");
+  };
+
   // 4. Categories
   const blockedCats = unique(purchase.items.filter((i) => policy.blockedCategories.includes(i.category)).map((i) => i.category));
   const notAllowed =
     policy.allowedCategories.length === 0
       ? []
       : unique(purchase.items.filter((i) => !policy.allowedCategories.includes(i.category)).map((i) => i.category));
-  if (blockedCats.length > 0) {
+  if (grant) {
+    covered("categories", "Categories");
+  } else if (blockedCats.length > 0) {
     add("categories", "Categories", "block", `You never allow ${list(blockedCats)}.`);
   } else if (notAllowed.length > 0) {
     add(
@@ -93,7 +109,9 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
   }
 
   // 5. Per-order cap
-  if (policy.perOrderLimitCents !== null && purchase.totalCents > policy.perOrderLimitCents) {
+  if (grant) {
+    covered("per_order_limit", "Per-order limit");
+  } else if (policy.perOrderLimitCents !== null && purchase.totalCents > policy.perOrderLimitCents) {
     add(
       "per_order_limit",
       "Per-order limit",
@@ -124,7 +142,9 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
   }
 
   // 7. Approval threshold (hold, not block)
-  if (policy.approvalThresholdCents !== null && purchase.totalCents > policy.approvalThresholdCents) {
+  if (grant) {
+    covered("approval_threshold", "Approval threshold");
+  } else if (policy.approvalThresholdCents !== null && purchase.totalCents > policy.approvalThresholdCents) {
     add(
       "approval_threshold",
       "Approval threshold",
@@ -139,7 +159,9 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
 
   // 8. New merchant (hold)
   const isNew = !policy.trustedMerchants.includes(purchase.merchantId) && !context.hasPurchasedFromMerchant;
-  if (policy.requireApprovalForNewMerchants && isNew) {
+  if (grant) {
+    if (policy.requireApprovalForNewMerchants) covered("new_merchant", "New merchant");
+  } else if (policy.requireApprovalForNewMerchants && isNew) {
     add(
       "new_merchant",
       "New merchant",
@@ -153,7 +175,9 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
   }
 
   // 9. Pace (hold): many purchases in a short window is what a hijacked or looping agent looks like.
-  if (policy.velocity) {
+  if (policy.velocity && grant) {
+    covered("velocity", "Pace");
+  } else if (policy.velocity) {
     const { maxPurchases, windowMinutes } = policy.velocity;
     const recent = context.recentPurchaseCount ?? 0;
     const window = windowMinutes === 60 ? "hour" : `${windowMinutes} minutes`;
@@ -172,7 +196,9 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
   }
 
   // 10. Duplicate (hold): the same product bought recently.
-  if (policy.duplicateWindowDays !== null) {
+  if (policy.duplicateWindowDays !== null && grant) {
+    covered("duplicate", "Repeat purchase");
+  } else if (policy.duplicateWindowDays !== null) {
     const now = context.now ?? new Date();
     const dupes = purchase.items.filter((i) => context.lastBoughtAt?.[i.productId]);
     if (dupes.length > 0) {

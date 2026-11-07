@@ -20,6 +20,9 @@ import { GuidedDemo, type ScenarioState } from "./guided-demo";
 import { DEMO_SCENARIOS, type DemoScenario } from "@/lib/demo";
 import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
 import { telegramEnabled } from "@/lib/telegram";
+import { db, schema } from "@/db";
+import { grantState, listGrants } from "@/lib/allowances";
+import { grantScope, STATE } from "@/lib/allowance-format";
 import { ApprovalHelp } from "@/components/approval-help";
 
 export const metadata = { title: "Dashboard · Allowance" };
@@ -37,8 +40,10 @@ export default function Page() {
 async function DashboardContent() {
   const userId = await getSessionUserId();
   if (!userId) redirect("/");
-  const d = await getDashboard(userId);
+  const [d, grants] = await Promise.all([getDashboard(userId), listGrants(userId)]);
   if (!d.user) redirect("/");
+  const shownGrants = grants.filter((g) => grantState(g) === "active" || grantState(g) === "used").slice(0, 3);
+  const merchantNames = Object.fromEntries((await db().select({ id: schema.merchants.id, name: schema.merchants.name }).from(schema.merchants)).map((m) => [m.id, m.name]));
   const pending = d.purchases.filter((p) => p.purchase.status === "pending_approval");
   const LATEST_BUILTIN = d.agents.find((a) => a.keyPrefix === "builtin")?.id;
   // Live state of each guided-demo step: the latest purchase the built-in agent made for that scenario.
@@ -125,6 +130,35 @@ async function DashboardContent() {
         </Card>
       </div>
 
+      {shownGrants.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardDescription>One-time allowances</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-sm">
+              {shownGrants.map((g) => {
+                const st = grantState(g);
+                return (
+                  <li key={g.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <span>
+                      <span className="font-medium">{g.description}</span>{" "}
+                      <span className="text-muted-foreground">
+                        · {grantScope(g, merchantNames)} · {st === "active" ? `until ${formatWhen(g.expiresAt)}` : "used"}
+                      </span>
+                    </span>
+                    <Badge className={STATE[st].className}>{STATE[st].label}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+            <Link href="/rules#one-time" className="mt-3 inline-block text-sm underline underline-offset-2">
+              Manage one-time allowances
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       <PurchasesCard purchases={d.purchases} />
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_22rem]">
         <AgentsPanel
@@ -193,6 +227,8 @@ function RulesCard({ policy }: { policy: PolicyRules | null }) {
     policy.approvalThresholdCents !== null && `Ask me over ${formatUsd(policy.approvalThresholdCents)}`,
     policy.allowedCategories.length > 0 && `Only ${policy.allowedCategories.join(", ")}`,
     policy.requireApprovalForNewMerchants && "Ask before new merchants",
+    policy.velocity && `Ask after ${policy.velocity.maxPurchases} buys in ${policy.velocity.windowMinutes} min`,
+    policy.duplicateWindowDays !== null && `Ask before re-buying within ${policy.duplicateWindowDays} days`,
   ].filter(Boolean) as string[];
   return (
     <Card>
@@ -208,6 +244,9 @@ function RulesCard({ policy }: { policy: PolicyRules | null }) {
             </li>
           ))}
         </ul>
+        <Link href="/rules#one-time" className="mt-3 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+          + One-time allowance (e.g. a gift)
+        </Link>
       </CardContent>
     </Card>
   );
