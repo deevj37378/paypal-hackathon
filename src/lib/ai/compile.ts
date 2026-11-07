@@ -3,7 +3,9 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { formatUsd } from "@/lib/money";
-import { PolicyRules } from "@/lib/policy/schema";
+import { DEFAULT_POLICY, PolicyRules } from "@/lib/policy/schema";
+
+const DEFAULT_PACE = DEFAULT_POLICY.velocity;
 import { getActivePolicy } from "@/lib/users";
 import { aiQuota, cacheGet, cacheSet, hashKey } from "./limits";
 import { getModel } from "./model";
@@ -30,6 +32,11 @@ const Draft = z.object({
     .boolean()
     .nullable()
     .describe("true/false only if the person says whether to ask before buying from new merchants; null if not mentioned"),
+  paceMaxPurchases: z.number().int().nullable().describe("ask before more than N purchases in a short window; null if not mentioned"),
+  paceWindowMinutes: z.number().int().nullable().describe("the window for paceMaxPurchases in minutes (an hour = 60); null if not mentioned"),
+  removePaceLimit: z.boolean().describe("true ONLY if the person explicitly says there should be no limit on how fast/often agents buy"),
+  repeatWindowDays: z.number().int().nullable().describe("ask before re-buying the same product within this many days; null if not mentioned"),
+  allowRepeats: z.boolean().describe("true ONLY if the person explicitly says repeat purchases of the same item are fine"),
   assumptions: z.array(z.string()).describe("short notes on anything you assumed or normalised, in plain English"),
 });
 
@@ -66,7 +73,7 @@ export async function compileRules(userId: string, text: string): Promise<Compil
   if (!model) return { kind: "error", message: "AI rule translation isn't available right now. You can still edit your rules with the form." };
   const [vocab, current] = await Promise.all([storeVocabulary(), getActivePolicy(userId)]);
   const keepTrusted = current?.rules.trustedMerchants ?? [];
-  const cacheKey = hashKey("compile:v4", text.trim().toLowerCase(), JSON.stringify(vocab), JSON.stringify(current?.rules ?? null));
+  const cacheKey = hashKey("compile:v5", text.trim().toLowerCase(), JSON.stringify(vocab), JSON.stringify(current?.rules ?? null));
   const cached = await cacheGet<CompileResult>(cacheKey);
   if (cached) return cached;
 
@@ -80,7 +87,7 @@ export async function compileRules(userId: string, text: string): Promise<Compil
       output: Output.object({ schema: Draft }),
       system: [
         "You convert a person's plain-English spending rules for their AI shopping agent into structured settings.",
-        "Never invent limits the person didn't state. Anything not mentioned must be null (the current setting is kept); only use the remove*/clear* flags when the person explicitly removes something. Amounts are USD. 'Ask me/check with me before X' means approvalAboveUsd. 'Max/at most X per order' means perOrderLimitUsd. 'X a month/per month' means monthlyLimitUsd.",
+        "Never invent limits the person didn't state. 'Ask me if it buys more than 3 things in 10 minutes' means paceMaxPurchases=3, paceWindowMinutes=10. 'Ask before buying the same thing twice in a week' means repeatWindowDays=7. Anything not mentioned must be null (the current setting is kept); only use the remove*/clear* flags when the person explicitly removes something. Amounts are USD. 'Ask me/check with me before X' means approvalAboveUsd. 'Max/at most X per order' means perOrderLimitUsd. 'X a month/per month' means monthlyLimitUsd.",
         "If no monthly limit is stated, set needsClarification=true and ask for one: a monthly limit is required.",
         `Known store categories: ${vocab.categories.join(", ")}. Map the person's words onto these when they clearly match (e.g. "book" → "books").`,
         `Known merchants (id = name): ${vocab.merchants.map((m) => `${m.id} = ${m.name}`).join("; ")}. Use ids.`,
@@ -140,7 +147,18 @@ export async function compileRules(userId: string, text: string): Promise<Compil
     const newMerchants = draft.requireApprovalForNewMerchants ?? cur?.requireApprovalForNewMerchants ?? true;
     if (draft.requireApprovalForNewMerchants === null && cur?.requireApprovalForNewMerchants) kept.push("Still asking before new merchants (not mentioned).");
 
+    const curPace = cur ? cur.velocity : DEFAULT_PACE;
+    const velocity = draft.removePaceLimit
+      ? null
+      : draft.paceMaxPurchases !== null
+        ? { maxPurchases: draft.paceMaxPurchases, windowMinutes: draft.paceWindowMinutes ?? curPace?.windowMinutes ?? 10 }
+        : curPace;
+    const curRepeat = cur ? cur.duplicateWindowDays : 7;
+    const duplicateWindowDays = draft.allowRepeats ? null : (draft.repeatWindowDays ?? curRepeat);
+
     const candidate = {
+      velocity,
+      duplicateWindowDays,
       version: 1 as const,
       currency: "USD" as const,
       monthlyLimitCents: monthly,
@@ -163,7 +181,7 @@ export async function compileRules(userId: string, text: string): Promise<Compil
       result = { kind: "clarify", question: "Your per-order limit is bigger than your monthly limit. Which one should win?" };
     } else {
       // Our "kept" notes are authoritative; drop model notes that talk about the same settings.
-      let notes = draft.assumptions.filter((n) => !/trusted|kept|keep|not mentioned|per-order|threshold|blocked/i.test(n)).slice(0, 3);
+      let notes = draft.assumptions.filter((n) => !/trusted|kept|keep|not mentioned|per-order|threshold|blocked|pace|repeat/i.test(n)).slice(0, 3);
       notes = [...kept, ...notes];
       if (!draft.trustedMerchants.length && keepTrusted.length) {
         notes.push(`Kept your trusted merchants (${keepTrusted.map(merchantName).join(", ")}), so they don't count as "new".`);

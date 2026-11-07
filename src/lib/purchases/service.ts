@@ -78,6 +78,44 @@ async function hasPurchasedFrom(userId: string, merchantId: string, ex: DbExecut
   return Boolean(row);
 }
 
+/** Purchases that moved money in the last `minutes` (pace limit). */
+async function recentPurchaseCount(userId: string, minutes: number, excludePurchaseId: string | undefined, ex: DbExecutor) {
+  const [row] = await ex
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.purchases)
+    .where(
+      and(
+        eq(schema.purchases.userId, userId),
+        inArray(schema.purchases.status, ["processing", "captured", "refunded"]),
+        gte(schema.purchases.createdAt, new Date(Date.now() - minutes * 60_000)),
+        excludePurchaseId ? sql`${schema.purchases.id} <> ${excludePurchaseId}` : undefined,
+      ),
+    );
+  return Number(row?.n ?? 0);
+}
+
+/** Latest charge (not refunded) of each product in the order within `days` (duplicate check). */
+async function lastBoughtAt(userId: string, productIds: string[], days: number, excludePurchaseId: string | undefined, ex: DbExecutor) {
+  const rows = await ex
+    .select({ items: schema.purchases.items, at: schema.purchases.createdAt })
+    .from(schema.purchases)
+    .where(
+      and(
+        eq(schema.purchases.userId, userId),
+        inArray(schema.purchases.status, ["processing", "captured"]),
+        gte(schema.purchases.createdAt, new Date(Date.now() - days * 86_400_000)),
+        excludePurchaseId ? sql`${schema.purchases.id} <> ${excludePurchaseId}` : undefined,
+      ),
+    );
+  const out: Record<string, Date> = {};
+  for (const r of rows) {
+    for (const i of r.items) {
+      if (productIds.includes(i.productId) && (!out[i.productId] || out[i.productId] < r.at)) out[i.productId] = r.at;
+    }
+  }
+  return out;
+}
+
 /** Policy check + preconditions the pure checker doesn't know about (PayPal linked, policy present). */
 async function evaluate(ex: DbExecutor, p: {
   userId: string;
@@ -102,8 +140,15 @@ async function evaluate(ex: DbExecutor, p: {
       result: { outcome: "blocked", reasons: [detail], checks: [{ id: "policy", label: "Spending rules", status: "block", detail }] },
     };
   }
+  const rules = policy.rules;
+  const [recent, lastBought] = await Promise.all([
+    rules.velocity ? recentPurchaseCount(p.userId, rules.velocity.windowMinutes, p.excludePurchaseId, ex) : Promise.resolve(0),
+    rules.duplicateWindowDays !== null
+      ? lastBoughtAt(p.userId, p.items.map((i) => i.productId), rules.duplicateWindowDays, p.excludePurchaseId, ex)
+      : Promise.resolve({}),
+  ]);
   const result = checkPurchase({
-    policy: policy.rules,
+    policy: rules,
     purchase: {
       merchantId: p.merchant.id,
       merchantName: p.merchant.name,
@@ -112,7 +157,13 @@ async function evaluate(ex: DbExecutor, p: {
       totalCents: p.totalCents,
       claimedTotalCents: p.claimedTotalCents,
     },
-    context: { spentThisMonthCents: spent, hasPurchasedFromMerchant: purchasedBefore, humanApproved: p.humanApproved },
+    context: {
+      spentThisMonthCents: spent,
+      hasPurchasedFromMerchant: purchasedBefore,
+      humanApproved: p.humanApproved,
+      recentPurchaseCount: recent,
+      lastBoughtAt: lastBought,
+    },
   });
   if (!vault) {
     const detail = "The owner hasn't linked PayPal yet.";

@@ -30,6 +30,20 @@ export function ruleCards(r: PolicyRules, names: Record<string, string> = {}): R
       kind: "approval",
     },
     {
+      id: "velocity",
+      title: "Pace",
+      value: r.velocity
+        ? `Ask if agents make more than ${r.velocity.maxPurchases} purchases in ${r.velocity.windowMinutes === 60 ? "an hour" : `${r.velocity.windowMinutes} minutes`}`
+        : "No pace limit",
+      kind: "approval",
+    },
+    {
+      id: "duplicateWindowDays",
+      title: "Repeat purchases",
+      value: r.duplicateWindowDays === null ? "Repeats are fine" : `Ask before re-buying something from the last ${r.duplicateWindowDays} days`,
+      kind: "approval",
+    },
+    {
       id: "categories",
       title: "What it can buy",
       value:

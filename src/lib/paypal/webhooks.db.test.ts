@@ -27,7 +27,7 @@ describe("PayPal webhook handling", () => {
     userId = await createUser({ name: "webhook test" });
     await db()
       .update(schema.policies)
-      .set({ rules: { ...DEFAULT_POLICY, allowedCategories: [], approvalThresholdCents: null, requireApprovalForNewMerchants: false } })
+      .set({ rules: { ...DEFAULT_POLICY, allowedCategories: [], approvalThresholdCents: null, requireApprovalForNewMerchants: false, velocity: null, duplicateWindowDays: null } })
       .where(eq(schema.policies.userId, userId));
     await db().insert(schema.paypalVaults).values({ id: newId("vlt"), userId, paymentTokenId: `fake-${userId}`, status: "active" });
     await db().insert(schema.merchants).values({ id: merchantId, name: "Webhook Shop", payoutEmail: "wh@example.com" });

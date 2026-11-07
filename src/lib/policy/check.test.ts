@@ -15,6 +15,44 @@ function input(items: CheckItem[], over: Partial<CheckInput["purchase"]> = {}, c
   };
 }
 
+describe("checkPurchase: pace and repeat purchases", () => {
+  const now = new Date("2026-11-08T12:00:00Z");
+  it("holds the 4th purchase within 10 minutes", () => {
+    const r = checkPurchase(input([coffee], {}, { recentPurchaseCount: 3, now }));
+    expect(r.outcome).toBe("pending_approval");
+    expect(r.checks.find((c) => c.id === "velocity")?.status).toBe("hold");
+    expect(r.reasons[0]).toMatch(/already made 3 purchases in the last 10 minutes/);
+  });
+  it("passes under the pace limit", () => {
+    expect(checkPurchase(input([coffee], {}, { recentPurchaseCount: 2, now })).outcome).toBe("approved");
+  });
+  it("holds a product bought 2 days ago", () => {
+    const r = checkPurchase(input([coffee], {}, { lastBoughtAt: { p1: new Date("2026-11-06T12:00:00Z") }, now }));
+    expect(r.outcome).toBe("pending_approval");
+    expect(r.reasons[0]).toBe("You bought House coffee beans 2 days ago.");
+  });
+  it("a human approval satisfies pace and repeat holds", () => {
+    const r = checkPurchase(input([coffee], {}, { recentPurchaseCount: 9, lastBoughtAt: { p1: now }, humanApproved: true, now }));
+    expect(r.outcome).toBe("approved");
+  });
+  it("both checks can be turned off", () => {
+    const policy = { ...DEFAULT_POLICY, velocity: null, duplicateWindowDays: null };
+    const r = checkPurchase(input([coffee], {}, { recentPurchaseCount: 50, lastBoughtAt: { p1: now }, now }, policy));
+    expect(r.outcome).toBe("approved");
+    expect(r.checks.some((c) => c.id === "velocity" || c.id === "duplicate")).toBe(false);
+  });
+  it("still blocks on hard limits even when also a repeat (blocks win over holds)", () => {
+    const r = checkPurchase(input([headphones], {}, { lastBoughtAt: { p3: now }, now }));
+    expect(r.outcome).toBe("blocked");
+  });
+  it("rules saved before these checks existed get the defaults", () => {
+    const old = Object.fromEntries(Object.entries(DEFAULT_POLICY).filter(([k]) => k !== "velocity" && k !== "duplicateWindowDays"));
+    const parsed = PolicyRules.parse(old);
+    expect(parsed.velocity).toEqual({ maxPurchases: 3, windowMinutes: 10 });
+    expect(parsed.duplicateWindowDays).toBe(7);
+  });
+});
+
 describe("checkPurchase: the demo story", () => {
   it("auto-approves $18 coffee from a trusted merchant", () => {
     const r = checkPurchase(input([coffee]));

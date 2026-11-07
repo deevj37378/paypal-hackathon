@@ -23,6 +23,8 @@ describe("parallel purchases can't exceed the monthly limit", () => {
       .set({
         rules: {
           ...DEFAULT_POLICY,
+          velocity: null,
+          duplicateWindowDays: null,
           monthlyLimitCents: 10_000,
           perOrderLimitCents: null,
           approvalThresholdCents: null,

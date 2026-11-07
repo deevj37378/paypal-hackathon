@@ -214,6 +214,11 @@ function ManualForm({
   const [approval, setApproval] = useState(usd(initial?.approvalThresholdCents));
   const [allowed, setAllowed] = useState<string[]>(initial?.allowedCategories ?? []);
   const [askNew, setAskNew] = useState(initial?.requireApprovalForNewMerchants ?? true);
+  const [paceOn, setPaceOn] = useState(initial ? initial.velocity !== null : true);
+  const [paceMax, setPaceMax] = useState(String(initial?.velocity?.maxPurchases ?? 3));
+  const [paceMins, setPaceMins] = useState(String(initial?.velocity?.windowMinutes ?? 10));
+  const [dupOn, setDupOn] = useState(initial ? initial.duplicateWindowDays !== null : true);
+  const [dupDays, setDupDays] = useState(String(initial?.duplicateWindowDays ?? 7));
   const [err, setErr] = useState<string | null>(null);
   const cents = (s: string) => (s.trim() === "" ? null : Math.round(Number(s) * 100));
 
@@ -226,8 +231,11 @@ function ManualForm({
         if (!m || m <= 0) return setErr("Set a monthly limit above $0.");
         const p = cents(perOrder);
         if (p !== null && p > m) return setErr("The per-order limit can't exceed the monthly limit.");
+        const int = (s: string, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(s) || lo)));
         setErr(null);
         onPropose({
+          velocity: paceOn ? { maxPurchases: int(paceMax, 1, 100), windowMinutes: int(paceMins, 1, 1440) } : null,
+          duplicateWindowDays: dupOn ? int(dupDays, 1, 90) : null,
           version: 1,
           currency: "USD",
           monthlyLimitCents: m,
@@ -282,6 +290,20 @@ function ManualForm({
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-primary" checked={askNew} onChange={(e) => setAskNew(e.target.checked)} />
         Ask before buying from a new merchant
+      </label>
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-primary" checked={paceOn} onChange={(e) => setPaceOn(e.target.checked)} />
+        Ask if my agents make more than
+        <Input aria-label="Purchases" type="number" min="1" max="100" className="h-7 w-16" value={paceMax} disabled={!paceOn} onChange={(e) => setPaceMax(e.target.value)} />
+        purchases in
+        <Input aria-label="Minutes" type="number" min="1" max="1440" className="h-7 w-16" value={paceMins} disabled={!paceOn} onChange={(e) => setPaceMins(e.target.value)} />
+        minutes
+      </label>
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-primary" checked={dupOn} onChange={(e) => setDupOn(e.target.checked)} />
+        Ask before buying something already bought in the last
+        <Input aria-label="Days" type="number" min="1" max="90" className="h-7 w-16" value={dupDays} disabled={!dupOn} onChange={(e) => setDupDays(e.target.value)} />
+        days
       </label>
       {err && (
         <p role="alert" className="text-sm text-destructive">

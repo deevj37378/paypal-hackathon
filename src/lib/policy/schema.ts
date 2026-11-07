@@ -28,6 +28,17 @@ export const PolicyRules = z
     trustedMerchants: z.array(slug).max(100),
     /** Ask before buying from a merchant that isn't trusted and hasn't been bought from before. */
     requireApprovalForNewMerchants: z.boolean(),
+    /**
+     * Pace limit: hold when the agents already made this many purchases in the window (a hijacked
+     * agent tends to spend fast). null = off. Defaults apply to rules saved before this existed.
+     */
+    velocity: z
+      .object({ maxPurchases: z.number().int().min(1).max(100), windowMinutes: z.number().int().min(1).max(1440) })
+      .strict()
+      .nullable()
+      .default({ maxPurchases: 3, windowMinutes: 10 }),
+    /** Hold a product already bought within this many days (duplicate orders). null = off. */
+    duplicateWindowDays: z.number().int().min(1).max(90).nullable().default(7),
   })
   .strict();
 
@@ -46,4 +57,6 @@ export const DEFAULT_POLICY: PolicyRules = {
   blockedMerchants: [],
   trustedMerchants: ["demo-store"],
   requireApprovalForNewMerchants: true,
+  velocity: { maxPurchases: 3, windowMinutes: 10 },
+  duplicateWindowDays: 7,
 };

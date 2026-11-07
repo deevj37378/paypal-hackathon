@@ -26,6 +26,12 @@ export type CheckInput = {
     hasPurchasedFromMerchant: boolean;
     /** Set when re-checking after a human approved: approval-type holds are satisfied. */
     humanApproved?: boolean;
+    /** Purchases that moved money (processing/charged/refunded) in the pace window, excluding this one. */
+    recentPurchaseCount?: number;
+    /** When each product in this order was last charged (not refunded), within the duplicate window. */
+    lastBoughtAt?: Record<string, Date>;
+    /** Clock for "2 days ago" wording; defaults to now. */
+    now?: Date;
   };
 };
 
@@ -146,11 +152,60 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
     add("new_merchant", "New merchant", "pass", `${purchase.merchantName} is a known merchant.`);
   }
 
+  // 9. Pace (hold): many purchases in a short window is what a hijacked or looping agent looks like.
+  if (policy.velocity) {
+    const { maxPurchases, windowMinutes } = policy.velocity;
+    const recent = context.recentPurchaseCount ?? 0;
+    const window = windowMinutes === 60 ? "hour" : `${windowMinutes} minutes`;
+    if (recent >= maxPurchases) {
+      add(
+        "velocity",
+        "Pace",
+        context.humanApproved ? "pass" : "hold",
+        context.humanApproved
+          ? "You approved going over your pace limit."
+          : `Your agents already made ${recent} purchase${recent === 1 ? "" : "s"} in the last ${window} (your limit is ${maxPurchases} before you're asked).`,
+      );
+    } else {
+      add("velocity", "Pace", "pass", `${recent} of ${maxPurchases} purchases in the last ${window}.`);
+    }
+  }
+
+  // 10. Duplicate (hold): the same product bought recently.
+  if (policy.duplicateWindowDays !== null) {
+    const now = context.now ?? new Date();
+    const dupes = purchase.items.filter((i) => context.lastBoughtAt?.[i.productId]);
+    if (dupes.length > 0) {
+      const first = dupes[0];
+      add(
+        "duplicate",
+        "Repeat purchase",
+        context.humanApproved ? "pass" : "hold",
+        context.humanApproved
+          ? "You approved buying this again."
+          : `You bought ${first.name} ${ago(context.lastBoughtAt![first.productId], now)}.${dupes.length > 1 ? ` (and ${dupes.length - 1} more item${dupes.length > 2 ? "s" : ""} in this order)` : ""}`,
+      );
+    } else {
+      add("duplicate", "Repeat purchase", "pass", `Nothing here was bought in the last ${policy.duplicateWindowDays} days.`);
+    }
+  }
+
   const blocks = checks.filter((c) => c.status === "block");
   const holds = checks.filter((c) => c.status === "hold");
   const outcome: Outcome = blocks.length > 0 ? "blocked" : holds.length > 0 ? "pending_approval" : "approved";
   const reasons = (blocks.length > 0 ? blocks : holds).map((c) => c.detail);
   return { outcome, checks, reasons };
+}
+
+/** "12 minutes ago", "3 hours ago", "2 days ago". */
+export function ago(then: Date, now: Date) {
+  const mins = Math.max(0, Math.round((now.getTime() - then.getTime()) / 60_000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 const unique = <T,>(xs: T[]) => [...new Set(xs)];
