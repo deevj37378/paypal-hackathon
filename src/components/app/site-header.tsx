@@ -1,13 +1,12 @@
 import Link from "next/link";
+import { LogoMark } from "./logo";
 
 export function SiteHeader({ children, wide = false }: { children?: React.ReactNode; wide?: boolean }) {
   return (
     <header className="border-b bg-background/80 backdrop-blur">
       <div className={`mx-auto flex h-14 w-full items-center justify-between px-4 sm:px-6 ${wide ? "max-w-6xl" : "max-w-5xl"}`}>
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span aria-hidden className="grid size-6 place-items-center rounded-md bg-primary text-xs text-primary-foreground">
-            A
-          </span>
+          <LogoMark className="size-6 text-primary" />
           Allowance
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 uppercase">Sandbox</span>
         </Link>
