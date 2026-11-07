@@ -164,7 +164,7 @@ export function checkPurchase({ policy, purchase, context }: CheckInput): CheckR
         context.humanApproved ? "pass" : "hold",
         context.humanApproved
           ? "You approved going over your pace limit."
-          : `Your agents already made ${recent} purchase${recent === 1 ? "" : "s"} in the last ${window} (your limit is ${maxPurchases} before you're asked).`,
+          : `Your agents already made ${recent} purchase${recent === 1 ? "" : "s"} in the last ${window}, so you're asked before any more.`,
       );
     } else {
       add("velocity", "Pace", "pass", `${recent} of ${maxPurchases} purchases in the last ${window}.`);

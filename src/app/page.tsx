@@ -23,6 +23,9 @@ export default function Home() {
   return (
     <>
       <SiteHeader wide>
+        <Link href="/security" className="text-sm text-muted-foreground hover:text-foreground">
+          Security
+        </Link>
         <Link href="/store" className="text-sm text-muted-foreground hover:text-foreground">
           Demo store
         </Link>
