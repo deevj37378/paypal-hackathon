@@ -1,7 +1,7 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 
-export const STORE_MERCHANTS = ["demo-store", "gadget-hub"];
+export const STORE_MERCHANTS = ["demo-store", "gadget-hub", "deals-hub"];
 
 /** Public catalog of the demo merchants. */
 export async function getCatalog() {

@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DEMO_SCENARIOS, type DemoScenario } from "@/lib/demo";
 import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
 
-export type ScenarioState = { purchaseId: string; status: string; payoutStatus: string; reason: string | null };
+export type ScenarioState = { purchaseId: string; status: string; payoutStatus: string; reason: string | null; reasons: string[] };
 
 /**
  * Guided demo. Each card shows the LIVE status of the latest purchase for that scenario (server data,
@@ -77,7 +77,10 @@ export function GuidedDemo({ isDemo, telegram, state }: { isDemo: boolean; teleg
             const payout = live?.status === "captured" ? PAYOUT_STATUS[live.payoutStatus] : "";
             const err = errors[key];
             return (
-              <li key={key} className="flex flex-col gap-2 rounded-lg border p-3">
+              <li
+                key={key}
+                className={`flex flex-col gap-2 rounded-lg border p-3 ${key === "tricked" ? "border-red-200 bg-red-50/40 sm:col-span-2 lg:col-span-4" : ""}`}
+              >
                 <p className="text-xs font-medium text-muted-foreground">Step {i + 1}</p>
                 <p className="font-medium">{s.label}</p>
                 <p className="text-xs text-muted-foreground">
@@ -88,8 +91,21 @@ export function GuidedDemo({ isDemo, telegram, state }: { isDemo: boolean; teleg
                     <div className="space-y-1">
                       <Badge className={badge.className}>{badge.label}</Badge>
                       {payout && <p className="text-muted-foreground">{payout}</p>}
-                      {(live.status === "blocked" || live.status === "pending_approval") && live.reason && (
-                        <p className="text-muted-foreground">{live.reason}</p>
+                      {key === "tricked" && live.reasons.length > 0 && live.status !== "captured" ? (
+                        <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground">
+                          {live.reasons.map((r) => (
+                            <li key={r}>{r}</li>
+                          ))}
+                          <li>
+                            Money moved: <strong className="text-foreground">$0.00</strong>. The rule checker never reads product pages.{" "}
+                            <Link href="/security" className="underline underline-offset-2">
+                              Security
+                            </Link>
+                          </li>
+                        </ul>
+                      ) : (
+                        (live.status === "blocked" || live.status === "pending_approval") &&
+                        live.reason && <p className="text-muted-foreground">{live.reason}</p>
                       )}
                       <Link href={`/purchases/${live.purchaseId}`} className="block underline underline-offset-2">
                         See timeline

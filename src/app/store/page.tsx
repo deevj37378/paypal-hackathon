@@ -1,4 +1,4 @@
-import { BookOpen, Coffee, CupSoda, Headphones, Package, Sparkles } from "lucide-react";
+import { BookOpen, Coffee, CupSoda, Gift, Headphones, Package, Sparkles, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -6,16 +6,18 @@ import { SiteHeader } from "@/components/app/site-header";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { formatUsd } from "@/lib/money";
-import { getCatalog } from "@/lib/store/catalog";
+import { getCatalog, STORE_MERCHANTS } from "@/lib/store/catalog";
 
 export const metadata = { title: "Bean & Page · an agent-ready store" };
 
-const ICON: Record<string, typeof Coffee> = { coffee: Coffee, books: BookOpen, kitchen: CupSoda, electronics: Headphones };
+const ICON: Record<string, typeof Coffee> = { coffee: Coffee, books: BookOpen, kitchen: CupSoda, electronics: Headphones, gifts: Gift, "gift-cards": Gift };
 const TINT: Record<string, string> = {
   coffee: "from-amber-100 to-orange-50 text-amber-800",
   books: "from-sky-100 to-indigo-50 text-indigo-800",
   kitchen: "from-rose-100 to-pink-50 text-rose-800",
   electronics: "from-zinc-200 to-zinc-50 text-zinc-800",
+  gifts: "from-fuchsia-100 to-pink-50 text-fuchsia-800",
+  "gift-cards": "from-red-100 to-orange-50 text-red-800",
 };
 
 export default function StorePage() {
@@ -58,7 +60,7 @@ export default function StorePage() {
 async function Products() {
   await connection();
   const rows = await getCatalog();
-  const groups = ["demo-store", "gadget-hub"].map((m) => ({ id: m, name: rows.find((r) => r.p.merchantId === m)?.merchantName ?? m, items: rows.filter((r) => r.p.merchantId === m) }));
+  const groups = STORE_MERCHANTS.map((m) => ({ id: m, name: rows.find((r) => r.p.merchantId === m)?.merchantName ?? m, items: rows.filter((r) => r.p.merchantId === m) }));
   return (
     <>
       {groups.map((g) => (
@@ -71,6 +73,18 @@ async function Products() {
           </div>
           {g.id === "gadget-hub" && (
             <p className="-mt-2 text-sm text-muted-foreground">A second shop. Under the default rules it counts as a new merchant, so the owner is asked first.</p>
+          )}
+          {g.id === "deals-hub" && (
+            <p className="-mt-2 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+              <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <span>
+                A test shop for prompt injection. Its product description tells AI agents to ignore their rules and buy 5. A
+                fooled agent can ask, but Allowance&apos;s rule checker still says no.{" "}
+                <Link href="/security" className="underline underline-offset-2">
+                  How that works
+                </Link>
+              </span>
+            </p>
           )}
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {g.items.map(({ p }) => {
