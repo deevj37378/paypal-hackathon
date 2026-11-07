@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { Loader2 } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,26 +20,46 @@ export function GuidedDemo({ isDemo, telegram, state }: { isDemo: boolean; teleg
   const router = useRouter();
   const [errors, setErrors] = useState<Partial<Record<DemoScenario, string>>>({});
   const [running, setRunning] = useState<DemoScenario | null>(null);
-  const [, start] = useTransition();
+  const [cooldownMs, setCooldownMs] = useState<number | null>(null);
+  const [refreshing, startRefresh] = useTransition();
+  // Synchronous lock: a second click before React re-renders is ignored.
+  const busyRef = useRef(false);
 
-  const run = (s: DemoScenario) =>
-    start(async () => {
-      setRunning(s);
-      setErrors((e) => ({ ...e, [s]: undefined }));
-      try {
-        const res = await fetch("/api/demo/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: s }) });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          setErrors((e) => ({ ...e, [s]: data.message ?? "Something went wrong." }));
-        }
-        router.refresh();
-      } finally {
-        setRunning(null);
+  // Re-enable the buttons when a rate-limit cooldown ends.
+  useEffect(() => {
+    if (!cooldownMs) return;
+    const t = setTimeout(() => setCooldownMs(null), cooldownMs);
+    return () => clearTimeout(t);
+  }, [cooldownMs]);
+
+  const busy = running !== null || refreshing || cooldownMs !== null;
+
+  // Busy state is set immediately (outside any transition, which React would defer), so every button
+  // disables on the first click; only the dashboard refresh runs as a transition.
+  const run = async (s: DemoScenario) => {
+    if (busyRef.current || busy) return;
+    busyRef.current = true;
+    setRunning(s);
+    setErrors((e) => ({ ...e, [s]: undefined }));
+    try {
+      const res = await fetch("/api/demo/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: s }) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrors((e) => ({ ...e, [s]: data.message ?? "Something went wrong." }));
+        const retry = Number(res.headers.get("retry-after") ?? 0);
+        if (res.status === 429 && retry > 0) setCooldownMs(retry * 1000);
       }
-    });
+      startRefresh(() => router.refresh());
+    } catch {
+      setErrors((e) => ({ ...e, [s]: "Couldn't reach the server. Try again." }));
+    } finally {
+      busyRef.current = false;
+      setRunning(null);
+    }
+  };
 
   return (
-    <Card className={isDemo ? "border-primary/30" : ""}>
+    <Card className={isDemo ? "border-primary/30" : ""} aria-busy={busy}>
       <CardHeader>
         <CardTitle>{isDemo ? "Play the story in 60 seconds" : "Guided demo"}</CardTitle>
         <CardDescription>
@@ -79,8 +100,25 @@ export function GuidedDemo({ isDemo, telegram, state }: { isDemo: boolean; teleg
                       {err}
                     </p>
                   )}
-                  <Button size="sm" variant={live ? "outline" : "default"} className="w-full" disabled={running !== null} onClick={() => run(key)}>
-                    {running === key ? "Agent is asking…" : live || err ? "Run again" : "Run"}
+                  <Button
+                    size="sm"
+                    variant={live ? "outline" : "default"}
+                    className="w-full"
+                    disabled={busy}
+                    aria-disabled={busy}
+                    onClick={() => void run(key)}
+                  >
+                    {running === key ? (
+                      <>
+                        <Loader2 aria-hidden className="animate-spin" /> Agent is asking…
+                      </>
+                    ) : running === null && refreshing ? (
+                      "Updating…"
+                    ) : live || err ? (
+                      "Run again"
+                    ) : (
+                      "Run"
+                    )}
                   </Button>
                 </div>
               </li>
