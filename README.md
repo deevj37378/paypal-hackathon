@@ -172,21 +172,66 @@ Judges don't need any: **Try the demo** uses a pre-linked sandbox buyer. To test
 
 ### Connect Claude
 
-On the Agents page, create a key and copy the generated config. For Claude Desktop (`claude_desktop_config.json`):
+**No setup needed to try it:** [Try the agent](https://allowance-eight-eta.vercel.app/agent) uses the same four tools Claude gets. Keys belong to your demo account and stop working when it expires (24 hours).
 
-```json
-{
-  "mcpServers": {
-    "allowance": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://allowance-eight-eta.vercel.app/api/mcp", "--header", "Authorization:${ALLOWANCE_AUTH}"],
-      "env": { "ALLOWANCE_AUTH": "Bearer alw_sk_…" }
-    }
-  }
-}
+**1. Claude Code (fastest: one command).** Create a key on the Agents page, then:
+
+```bash
+claude mcp add --transport http allowance https://allowance-eight-eta.vercel.app/api/mcp --header "Authorization: Bearer alw_sk_…"
 ```
 
-Claude Code: `claude mcp add --transport http allowance https://allowance-eight-eta.vercel.app/api/mcp --header "Authorization: Bearer alw_sk_…"`
+Then run `claude` and ask: *"What's my Allowance budget?"*
+
+**2. Claude Desktop**
+
+a. Create a key on the Agents page; the config it shows has your key filled in.
+
+b. Open Claude's config file:
+   - **Mac:** click **Claude** in the menu bar at the very top of the screen (next to the Apple logo) → **Settings…** (⌘,) → scroll the left sidebar down to **Developer** → **Edit Config** → open `claude_desktop_config.json` in TextEdit.
+   - **Windows:** the **☰** menu at the top-left of Claude → **File → Settings…** → **Developer** → **Edit Config** → open it with Notepad.
+   - **Can't find Developer?** Open the file directly.
+     Mac (paste into Terminal):
+     ```bash
+     mkdir -p ~/Library/Application\ Support/Claude && touch ~/Library/Application\ Support/Claude/claude_desktop_config.json && open -e ~/Library/Application\ Support/Claude/claude_desktop_config.json
+     ```
+     Windows (press Win+R, paste, press Enter):
+     ```
+     notepad "%APPDATA%\Claude\claude_desktop_config.json"
+     ```
+
+c. Paste the Allowance settings. **Check what's in the file first.**
+   - **If the file is empty or only has `{}`:** replace everything with:
+     ```json
+     {
+       "mcpServers": {
+         "allowance": {
+           "command": "npx",
+           "args": ["-y", "mcp-remote", "https://allowance-eight-eta.vercel.app/api/mcp", "--header", "Authorization:${ALLOWANCE_AUTH}"],
+           "env": { "ALLOWANCE_AUTH": "Bearer alw_sk_…" }
+         }
+       }
+     }
+     ```
+   - **If the file already has text, don't delete it.** Copy just the Allowance entry (the Agents page has a "Copy just the Allowance entry" button):
+     ```json
+     "allowance": {
+       "command": "npx",
+       "args": ["-y", "mcp-remote", "https://allowance-eight-eta.vercel.app/api/mcp", "--header", "Authorization:${ALLOWANCE_AUTH}"],
+       "env": { "ALLOWANCE_AUTH": "Bearer alw_sk_…" }
+     }
+     ```
+     If the file already has `"mcpServers": { … }`, paste the entry inside it, after the last server, with a comma before it. Otherwise add `"mcpServers": { <entry> }` just before the file's final `}`, with a comma after the previous setting.
+
+d. Save, then **fully quit** Claude (⌘Q on Mac; on Windows right-click the Claude icon in the system tray → Quit) and reopen it.
+
+e. Check: in a new chat, ask *"What's my Allowance budget?"* and click **Allow** when Claude asks to use Allowance.
+
+**Troubleshooting**
+- **"Server disconnected" or npx not found:** install Node.js LTS from [nodejs.org](https://nodejs.org), then restart Claude. On a Mac, if it still fails, replace `"npx"` with the output of `which npx` (e.g. `/usr/local/bin/npx`).
+- **Claude won't start, or reports a config error:** a missing or extra comma. Paste the file into [jsonlint.com](https://jsonlint.com) to find it.
+- **"Invalid API key":** the demo account expired. Create a new key and replace the old one.
+
+**3. Any MCP client:** Streamable HTTP at `https://allowance-eight-eta.vercel.app/api/mcp` with header `Authorization: Bearer <your key>`. Claude.ai web connectors need OAuth, which Allowance doesn't offer yet, so use Claude Desktop or Claude Code.
 
 ## Limitations and what's next
 
