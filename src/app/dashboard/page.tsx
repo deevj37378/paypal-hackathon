@@ -53,7 +53,7 @@ async function DashboardContent() {
           p.merchantId === sc.input.merchant_id &&
           p.items[0]?.productId === sc.input.items[0].product_id,
       )?.purchase;
-      return [key, hit ? { purchaseId: hit.id, status: hit.status, payoutStatus: hit.payoutStatus, reason: hit.decision.reasons[0] ?? null, reasons: hit.decision.reasons } : null];
+      return [key, hit ? { purchaseId: hit.id, status: hit.status, payoutStatus: hit.payoutStatus, reason: hit.decision.reasons[0] ?? null, reasons: hit.decision.checks.filter((c) => c.status !== "pass").map((c) => c.detail) } : null];
     }),
   ) as Record<DemoScenario, ScenarioState | null>;
 

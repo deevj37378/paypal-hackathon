@@ -210,7 +210,8 @@ export function ago(then: Date, now: Date) {
 
 const unique = <T,>(xs: T[]) => [...new Set(xs)];
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-function list(xs: string[]) {
+function list(raw: string[]) {
+  const xs = raw.map((x) => x.replace(/-/g, " "));
   if (xs.length <= 1) return xs.join("");
   return `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }
