@@ -36,6 +36,8 @@ const schema = z.object({
   STUDIO_GEMINI_MODELS: z.string().default("gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.6-flash"),
   /** Global daily cap on LLM calls across all users (protects the free quota from public judges). */
   AI_DAILY_LIMIT: z.coerce.number().int().min(0).default(800),
+  /** ES256 private key (PKCS#8 PEM) that signs AP2-style mandates and purchase receipts. */
+  MANDATE_SIGNING_KEY: z.string().optional().transform((v) => (v ? v : undefined)),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 });

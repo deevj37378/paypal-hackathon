@@ -150,6 +150,11 @@ export const purchases = pgTable(
     aiExplanation: text("ai_explanation"),
     /** Telegram approval message, edited in place once the purchase is decided. */
     telegramMessageId: text("telegram_message_id"),
+    /** AP2-style signed purchase receipt (compact JWS), issued when the charge is captured. */
+    receiptId: text("receipt_id"),
+    receiptJws: text("receipt_jws"),
+    /** One-time allowance this purchase used, if any. */
+    grantId: text("grant_id"),
     capturedAt: ts("captured_at"),
     createdAt: createdAt(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -161,6 +166,30 @@ export const purchases = pgTable(
       .on(t.agentId, t.idempotencyKey)
       .where(sql`${t.idempotencyKey} is not null`),
   ],
+);
+
+/**
+ * One-time allowances: "let my agent buy a birthday gift up to $60 by Friday". Exactly one
+ * matching purchase may use it before it expires (claimed atomically under the user lock).
+ */
+export const oneTimeAllowances = pgTable(
+  "one_time_allowances",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    /** Category every item must be in (null = any category). */
+    category: text("category"),
+    /** Merchant it must be bought from (null = any merchant). */
+    merchantId: text("merchant_id"),
+    expiresAt: ts("expires_at").notNull(),
+    /** Set when a purchase claims it; cleared again if that charge fails. */
+    usedPurchaseId: text("used_purchase_id"),
+    cancelledAt: ts("cancelled_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("one_time_allowances_user_idx").on(t.userId, t.expiresAt)],
 );
 
 /** Append-only timeline for the purchase detail page. */

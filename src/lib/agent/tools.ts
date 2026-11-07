@@ -109,7 +109,7 @@ export async function requestPurchaseTool(agent: Agent, input: unknown) {
   const why = view.reasons.map((r) => r.replace(/\.$/, "")).join("; ");
   const summary =
     view.status === "approved"
-      ? `Approved and paid: ${formatUsd(p.totalCents)} at ${p.merchantId}. Purchase ${p.id}.`
+      ? `Approved and paid: ${formatUsd(p.totalCents)} at ${p.merchantId}. Purchase ${p.id}.${view.receipt_id ? ` Signed receipt ${view.receipt_id} (AP2-style JWS) is in "receipt"; anyone can verify it with /.well-known/jwks.json.` : ""}`
       : view.status === "pending_approval"
         ? `Held for the owner's approval (${why}). Tell the user it's waiting for their OK, then call get_purchase_status with purchase_id "${p.id}" to check back. Do not retry the purchase.`
         : view.status === "blocked"
@@ -143,7 +143,7 @@ export const TOOL_DESCRIPTIONS = {
   get_allowance_status:
     "Check how much the owner lets you spend: remaining monthly budget, per-order limit, the amount above which the owner must approve, allowed categories, and whether PayPal is linked. Call this before planning purchases.",
   request_purchase:
-    'Ask to buy items from ONE merchant. The owner\'s rules are enforced by a deterministic checker, not by you: the result is "approved" (already paid via the owner\'s PayPal; nothing else to do), "pending_approval" (the owner was asked; tell the user and poll get_purchase_status, never retry), or "blocked" (explain the reason to the user; don\'t retry). Pass total as a decimal string matching the store prices exactly, and a short reason the owner will see. Always pass a unique idempotency_key per intended purchase so retries never double-charge.',
+    'Ask to buy items from ONE merchant. The owner\'s rules are enforced by a deterministic checker, not by you: the result is "approved" (already paid via the owner\'s PayPal; the result includes a signed receipt, an AP2-style JWS, you can pass to the merchant), "pending_approval" (the owner was asked; tell the user and poll get_purchase_status, never retry), or "blocked" (explain the reason to the user; don\'t retry). Pass total as a decimal string matching the store prices exactly, and a short reason the owner will see. Always pass a unique idempotency_key per intended purchase so retries never double-charge.',
   get_purchase_status:
     'Check a purchase by purchase_id, e.g. to see whether the owner approved a "pending_approval" request. Statuses: approved, pending_approval, blocked, declined, expired, failed, refunded.',
 } as const;

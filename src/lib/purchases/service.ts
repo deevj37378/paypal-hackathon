@@ -9,6 +9,8 @@ import { PayPalError } from "@/lib/paypal/client";
 import { chargeVaultedWallet, refundCapture } from "@/lib/paypal/payments";
 import { checkPurchase, type CheckItem, type CheckResult } from "@/lib/policy/check";
 import { getActivePolicy, getActiveVault, getUser } from "@/lib/users";
+import { issueReceipt } from "@/lib/mandates/receipts";
+import { receiptIdFor } from "@/lib/mandates/mandate";
 import { logEvent } from "./events";
 import { notifyPurchase } from "./notify";
 
@@ -282,7 +284,7 @@ async function chargePurchase(purchase: Purchase): Promise<Purchase> {
       purchaseId: purchase.id,
       vaultId: vault.paymentTokenId,
       amountCents: purchase.totalCents,
-      description: `Allowance agent purchase ${purchase.id}`,
+      description: `Allowance agent purchase ${purchase.id} · receipt ${receiptIdFor(purchase.id)}`,
       items: purchase.items.map((i) => ({ ...i })),
     });
     if (res.captureStatus !== "COMPLETED" || !res.captureId) {
@@ -335,6 +337,7 @@ export async function markCaptured(purchaseId: string, ids: { orderId?: string |
     )
     .returning();
   if (!updated) return p; // already captured (or refunded): nothing to do
+  const receipt = await issueReceipt(purchaseId);
   await logEvent(purchaseId, "captured", `${how} ${formatUsd(p.totalCents)} to the saved PayPal account.`, ids);
   await logEvent(
     purchaseId,
@@ -343,7 +346,7 @@ export async function markCaptured(purchaseId: string, ids: { orderId?: string |
       ? "Merchant payout is ready to send."
       : `Merchant payout held for ${humanDuration(holdSeconds)} so a refund can still cancel it.`,
   );
-  return updated;
+  return receipt ? { ...updated, receiptId: receiptIdFor(purchaseId), receiptJws: receipt } : updated;
 }
 
 async function fail(purchase: Purchase, reason: string, data?: unknown) {
@@ -549,6 +552,9 @@ export function toAgentView(p: Purchase) {
     merchant_id: p.merchantId,
     items: p.items.map((i) => ({ product_id: i.productId, name: i.name, quantity: i.quantity })),
     approval_expires_at: p.status === "pending_approval" ? p.approvalExpiresAt?.toISOString() : undefined,
+    // AP2-style signed purchase receipt (compact JWS, ES256). Verify with /.well-known/jwks.json.
+    receipt_id: p.receiptId ?? undefined,
+    receipt: p.receiptJws ?? undefined,
     created_at: p.createdAt.toISOString(),
   };
 }

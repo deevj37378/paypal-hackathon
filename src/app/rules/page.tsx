@@ -6,6 +6,7 @@ import { aiConfigured } from "@/lib/ai/model";
 import { ruleCards } from "@/lib/policy/describe";
 import { getSessionUserId } from "@/lib/session";
 import { getActivePolicy } from "@/lib/users";
+import { signingConfigured } from "@/lib/mandates/keys";
 import { RulesEditor } from "./rules-editor";
 
 export const metadata = { title: "Rules · Allowance" };
@@ -43,6 +44,7 @@ async function RulesContent() {
       merchantNames={names}
       sourceText={policy?.sourceText ?? ""}
       aiAvailable={aiConfigured()}
+      signing={signingConfigured()}
       categories={cats.map((c) => c.c).filter((c) => c !== "test").sort()}
     />
   );

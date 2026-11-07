@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { db, schema } from "@/db";
 import { formatWhen } from "@/lib/format";
@@ -99,6 +100,27 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
               </div>
             )}
             {p.failureReason && p.status === "failed" && <p className="text-destructive">{p.failureReason}</p>}
+            {(p.status === "captured" || p.status === "refunded") && (
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">
+                    Signed receipt {p.receiptId && <code className="text-xs font-normal text-muted-foreground">{p.receiptId}</code>}
+                  </p>
+                  <a href={`/api/purchases/${p.id}/receipt`} className={buttonVariants({ size: "sm", variant: "outline" })}>
+                    Download signed receipt
+                  </a>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  An AP2-style receipt (compact JWS, ES256): the items, total, every rule check, how it was approved, and the hash of
+                  the mandate (your rules) it was checked against. The store verifies it before fulfilling. To check it yourself,
+                  paste it into{" "}
+                  <Link href="/verify" className="underline underline-offset-2">
+                    /verify
+                  </Link>{" "}
+                  or verify with the public key at <code>/.well-known/jwks.json</code>.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

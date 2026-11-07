@@ -5,6 +5,8 @@ import { Suspense } from "react";
 import { SiteHeader } from "@/components/app/site-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { verifyToken } from "@/lib/mandates/mandate";
+import { issueReceipt } from "@/lib/mandates/receipts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { db, schema } from "@/db";
 import { formatUsd } from "@/lib/money";
@@ -70,6 +72,21 @@ async function MerchantContent() {
     .orderBy(desc(p.createdAt))
     .limit(20);
 
+  // The store verifies each order's AP2-style signed receipt before treating it as fulfilled:
+  // signature against Allowance's JWKS, and the receipt must describe exactly this order.
+  const verified = new Map(
+    await Promise.all(
+      recent.map(async (r) => {
+        // Orders captured before receipts existed get theirs issued now (same signing path).
+        const jws = r.receiptJws ?? (r.status === "captured" ? await issueReceipt(r.id) : null);
+        if (!jws) return [r.id, false] as const;
+        const v = await verifyToken(jws);
+        const a = v.valid ? (v.payload.allowance as { purchase_id?: string; total?: { value?: string } } | undefined) : undefined;
+        return [r.id, Boolean(a && a.purchase_id === r.id && a.total?.value === (r.totalCents / 100).toFixed(2))] as const;
+      }),
+    ),
+  );
+
   const tiles = [
     { label: "Agent orders", value: String(stats.orders), note: `${formatUsd(stats.gross)} gross` },
     { label: "Paid out to you", value: formatUsd(stats.paidOut), note: "via PayPal Payouts" },
@@ -117,6 +134,7 @@ async function MerchantContent() {
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Payout</TableHead>
+                  <TableHead>Mandate</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -131,6 +149,19 @@ async function MerchantContent() {
                       <Badge className={PURCHASE_STATUS[r.status]?.className}>{PURCHASE_STATUS[r.status]?.label}</Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{PAYOUT_STATUS[r.payoutStatus] || "—"}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {verified.get(r.id) ? (
+                        <span className="font-medium text-emerald-700" title={`Signed receipt ${r.receiptId} verified against /.well-known/jwks.json`}>
+                          ✓ Mandate verified · fulfilled
+                        </span>
+                      ) : r.status === "captured" ? (
+                        <span className="text-amber-800" title="No valid signed receipt, so the store doesn't fulfil it yet">
+                          Not verified · on hold
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

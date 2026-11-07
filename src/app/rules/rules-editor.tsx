@@ -27,6 +27,7 @@ export function RulesEditor(props: {
   aiAvailable: boolean;
   categories: string[];
   merchantNames: Record<string, string>;
+  signing: boolean;
 }) {
   const router = useRouter();
   const [text, setText] = useState(props.sourceText);
@@ -173,6 +174,17 @@ export function RulesEditor(props: {
             ))}
             {!proposal && props.currentCards.length === 0 && <li className="text-sm text-muted-foreground">No active rules yet.</li>}
           </ul>
+          {!proposal && props.current && props.signing && (
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">Signed mandate</p>
+              <p className="mt-0.5 text-muted-foreground">
+                Your rules as an AP2-style IntentMandate, signed by Allowance (ES256). Every receipt points at it by hash.
+              </p>
+              <a href="/api/mandate" className="mt-2 inline-block font-medium underline underline-offset-2">
+                Export signed mandate (JSON)
+              </a>
+            </div>
+          )}
           {proposal && proposal.assumptions.length > 0 && (
             <div className="rounded-lg bg-muted/60 p-3 text-sm">
               <p className="font-medium">Assumptions</p>
