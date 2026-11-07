@@ -2,9 +2,11 @@
 export const DEMO_SCENARIOS = {
   coffee: {
     label: "Agent buys coffee",
-    detail: "$18, within your rules",
+    detail: "$16 decaf, within your rules",
     expect: "Charged automatically to PayPal",
-    input: { merchant_id: "demo-store", items: [{ product_id: "coffee-house-blend", quantity: 1 }], total: "18.00", currency: "USD", reason: "You're almost out of coffee: restocking your usual house blend." },
+    // Decaf, not House Blend: "restock my coffee" in the chat / Claude buys House Blend, and the
+    // repeat-purchase rule would hold it if the demo had just bought the same bag.
+    input: { merchant_id: "demo-store", items: [{ product_id: "coffee-decaf", quantity: 1 }], total: "16.00", currency: "USD", reason: "Evening coffee: a bag of Swiss Water decaf." },
   },
   book: {
     label: "Agent buys a $32 book",
@@ -33,3 +35,13 @@ export const DEMO_SCENARIOS = {
 } as const;
 
 export type DemoScenario = keyof typeof DEMO_SCENARIOS;
+
+/**
+ * Guided-demo purchases are tagged through their idempotency key ("demo:<step>:<uuid>"), so each
+ * step card shows only its own latest run, never a chat or MCP purchase of the same product.
+ */
+export const demoKey = (scenario: DemoScenario) => `demo:${scenario}:${crypto.randomUUID()}`;
+export const demoScenarioOf = (idempotencyKey: string | null) => {
+  const m = /^demo:([a-zA-Z]+):/.exec(idempotencyKey ?? "");
+  return m && m[1] in DEMO_SCENARIOS ? (m[1] as DemoScenario) : null;
+};
