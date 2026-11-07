@@ -1,3 +1,4 @@
+import { getUser } from "@/lib/users";
 import { convertToModelMessages, createUIMessageStreamResponse, isStepCount, streamText, toUIMessageStream, tool, type UIMessage } from "ai";
 import { z } from "zod";
 import { AgentAuthError, getBuiltinAgent, requireActiveAgent } from "@/lib/agents";
@@ -25,7 +26,7 @@ How to work:
 1. Call get_allowance_status first to learn the budget and rules.
 2. Use search_store to find exact product_ids and prices. Never invent products or prices.
 3. Call request_purchase once per merchant order, with the exact total and a short reason, and a fresh idempotency_key (any unique string).
-4. Report each result plainly: "approved" = paid; "pending_approval" = the owner must approve (say so; you may check later with get_purchase_status); "blocked" = explain the reason, don't retry or work around it.
+4. Report each result plainly: "approved" = paid; "pending_approval" = held for the owner (tell them how: the Approve / Decline buttons on their dashboard, or the Telegram message if the context below says Telegram is connected; nothing is charged until they approve; you may check later with get_purchase_status); "blocked" = explain the reason, don't retry or work around it.
 Keep replies short and friendly, in plain text (no markdown, no asterisks).
 The person you are chatting with IS the owner: always say "you"/"your" (e.g. "it's waiting for your approval"), never "the owner". Never show purchase IDs (pur_…), product IDs or other internal identifiers; name things in plain words instead. The demo store sells coffee and books (and a few things the default rules block). Defaults so you never need to ask: "my coffee" / "restock my coffee" means 1 bag of House Blend Coffee Beans (12oz) (product_id coffee-house-blend). "The book I mentioned" without a title means The Pragmatic Programmer (book-pragmatic). Only ask a question if the request is truly ambiguous beyond these defaults.`;
 
@@ -60,11 +61,12 @@ export async function POST(req: Request) {
       return Response.json({ error: "revoked", message: "You revoked the built-in assistant. Turn it back on from the Agents page." }, { status: 403 });
     }
     await aiQuota(`chat:${userId}`, 40);
+    const user = await getUser(userId);
 
     const result = streamText({
       model,
       maxRetries: 1,
-      system: SYSTEM,
+      system: `${SYSTEM}\nContext: Telegram is ${user?.telegramChatId ? "connected, so held purchases were also sent to their Telegram with Approve / Decline buttons" : "NOT connected, so never mention a Telegram message; they approve on the dashboard (they can connect Telegram there)"}.`,
       messages: await convertToModelMessages((messages as UIMessage[]).slice(-16)),
       stopWhen: isStepCount(8),
       onError: ({ error }) => console.error("[agent chat] stream error:", (error as { statusCode?: number })?.statusCode ?? "", (error as Error)?.message?.slice(0, 300)),

@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app/app-shell";
 import { aiConfigured } from "@/lib/ai/model";
 import { getBuiltinAgent } from "@/lib/agents";
 import { getSessionUserId } from "@/lib/session";
-import { getActiveVault } from "@/lib/users";
+import { getActiveVault, getUser } from "@/lib/users";
 import { AgentChat } from "./agent-chat";
 
 export const metadata = { title: "Try the agent · Allowance" };
@@ -29,6 +29,13 @@ export default function Page() {
 async function ChatContent() {
   const userId = await getSessionUserId();
   if (!userId) redirect("/");
-  const [agent, vault] = await Promise.all([getBuiltinAgent(userId), getActiveVault(userId)]);
-  return <AgentChat available={aiConfigured()} revoked={agent?.status === "revoked"} paypalLinked={Boolean(vault)} />;
+  const [agent, vault, user] = await Promise.all([getBuiltinAgent(userId), getActiveVault(userId), getUser(userId)]);
+  return (
+    <AgentChat
+      available={aiConfigured()}
+      revoked={agent?.status === "revoked"}
+      paypalLinked={Boolean(vault)}
+      telegram={Boolean(user?.telegramChatId)}
+    />
+  );
 }

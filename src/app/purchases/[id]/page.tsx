@@ -11,6 +11,7 @@ import { formatUsd } from "@/lib/money";
 import { getSessionUserId } from "@/lib/session";
 import { ApprovalButtons, RefundButton } from "@/app/dashboard/purchase-actions";
 import { PURCHASE_STATUS, PAYOUT_STATUS } from "@/lib/purchases/labels";
+import { ApprovalHelp } from "@/components/approval-help";
 import { Explanation } from "./explanation";
 import { StageStepper, stagesFor } from "./stage-stepper";
 
@@ -44,6 +45,7 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
   const { p, agentName, merchantName } = row;
   const events = await db().select().from(schema.purchaseEvents).where(eq(schema.purchaseEvents.purchaseId, p.id)).orderBy(asc(schema.purchaseEvents.createdAt));
   const s = PURCHASE_STATUS[p.status];
+  const [owner] = p.status === "pending_approval" ? await db().select({ telegramChatId: schema.users.telegramChatId }).from(schema.users).where(eq(schema.users.id, userId)).limit(1) : [];
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -83,7 +85,10 @@ async function PurchaseDetail({ params }: { params: Promise<{ id: string }> }) {
             )}
             {p.status === "pending_approval" && (
               <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-amber-900">{p.decision.reasons.join(" ")}</p>
+                <div className="space-y-2 text-amber-900">
+                  <p className="font-medium">{p.decision.reasons.join(" ")}</p>
+                  <ApprovalHelp telegram={Boolean(owner?.telegramChatId)} place="here" className="text-xs" />
+                </div>
                 <ApprovalButtons purchaseId={p.id} />
               </div>
             )}

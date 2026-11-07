@@ -20,6 +20,7 @@ import { GuidedDemo, type ScenarioState } from "./guided-demo";
 import { DEMO_SCENARIOS, type DemoScenario } from "@/lib/demo";
 import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
 import { telegramEnabled } from "@/lib/telegram";
+import { ApprovalHelp } from "@/components/approval-help";
 
 export const metadata = { title: "Dashboard · Allowance" };
 
@@ -80,10 +81,13 @@ async function DashboardContent() {
       )}
 
       {pending.length > 0 && (
-        <Card className="border-amber-300">
+        <Card id="approvals" className="scroll-mt-20 border-amber-300">
           <CardHeader>
             <CardTitle>Waiting for your approval</CardTitle>
-            <CardDescription>Your agent asked for these, but your rules say to check with you first.</CardDescription>
+            <CardDescription className="space-y-1">
+              <p>Your agent asked for these, but your rules say to check with you first.</p>
+              <ApprovalHelp telegram={Boolean(d.user.telegramChatId)} place="here" />
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {pending.map(({ purchase: p, agentName, merchantName }) => (
@@ -136,7 +140,9 @@ async function DashboardContent() {
           }))}
         />
 
-        <TelegramCard connected={Boolean(d.user.telegramChatId)} username={d.user.telegramUsername} enabled={telegramEnabled()} />
+        <div id="telegram" className="scroll-mt-20">
+          <TelegramCard connected={Boolean(d.user.telegramChatId)} username={d.user.telegramUsername} enabled={telegramEnabled()} />
+        </div>
       </div>
     </>
   );

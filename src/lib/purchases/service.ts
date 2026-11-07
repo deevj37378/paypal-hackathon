@@ -480,7 +480,8 @@ export function toAgentView(p: Purchase) {
   const message: Record<string, string> = {
     approved: `Purchase approved and paid (${formatUsd(p.totalCents)}).`,
     processing: "Payment is being processed.",
-    pending_approval: "Waiting for the owner to approve. Check back with get_purchase_status.",
+    pending_approval:
+      "Held for the owner's approval. Tell them to tap Approve or Decline on their Allowance dashboard (or in Telegram, if they connected it). Nothing is charged until they approve; unanswered requests expire after 24 hours. Check back with get_purchase_status.",
     blocked: "Blocked by the owner's spending rules.",
     declined: "The owner declined this purchase.",
     expired: "The owner didn't respond in time, so the request expired.",

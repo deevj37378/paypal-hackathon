@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ApprovalHelp } from "@/components/approval-help";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DEMO_SCENARIOS, type DemoScenario } from "@/lib/demo";
 import { PAYOUT_STATUS, PURCHASE_STATUS } from "@/lib/purchases/labels";
@@ -93,6 +94,15 @@ export function GuidedDemo({ isDemo, telegram, state }: { isDemo: boolean; teleg
                       <Link href={`/purchases/${live.purchaseId}`} className="block underline underline-offset-2">
                         See timeline
                       </Link>
+                    </div>
+                  )}
+                  {live?.status === "pending_approval" && (
+                    <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+                      <p className="font-medium">What now? It&apos;s your call.</p>
+                      <ApprovalHelp telegram={telegram} place="dashboard" />
+                      <a href="#approvals" className="inline-block font-medium underline underline-offset-2">
+                        Go to approval ↑
+                      </a>
                     </div>
                   )}
                   {err && (

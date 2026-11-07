@@ -47,7 +47,12 @@ export function TelegramCard({ connected, username, enabled }: { connected: bool
           </>
         ) : !link ? (
           <>
-            <p className="text-muted-foreground">Get Approve / Decline buttons in Telegram when an agent needs your OK.</p>
+            <p className="text-muted-foreground">Optional: approve held purchases from your phone. You can always approve on this dashboard instead.</p>
+            <ol className="list-decimal space-y-0.5 pl-4 text-muted-foreground">
+              <li>Click <strong>Connect Telegram</strong>.</li>
+              <li>Open the bot and press <strong>Start</strong> (or send the /start code we show you).</li>
+              <li>Held purchases then arrive with <strong>Approve</strong> / <strong>Decline</strong> buttons.</li>
+            </ol>
             <Button size="sm" onClick={connect} disabled={pending}>
               {pending ? "Creating link…" : "Connect Telegram"}
             </Button>

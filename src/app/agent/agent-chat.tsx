@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { ApprovalHelp } from "@/components/approval-help";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,7 +26,17 @@ const TOOL_LABEL: Record<string, string> = {
   get_purchase_status: "Checked a purchase",
 };
 
-export function AgentChat({ available, revoked, paypalLinked }: { available: boolean; revoked: boolean; paypalLinked: boolean }) {
+export function AgentChat({
+  available,
+  revoked,
+  paypalLinked,
+  telegram,
+}: {
+  available: boolean;
+  revoked: boolean;
+  paypalLinked: boolean;
+  telegram: boolean;
+}) {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status, error, stop } = useChat({ transport: new DefaultChatTransport({ api: "/api/agent/chat" }) });
   const busy = status === "submitted" || status === "streaming";
@@ -93,7 +104,7 @@ export function AgentChat({ available, revoked, paypalLinked }: { available: boo
                 if (part.type.startsWith("tool-")) {
                   const name = part.type.slice(5);
                   const p = part as { state: string; output?: ToolOut; input?: Record<string, unknown> };
-                  return <ToolCard key={key} name={name} state={p.state} output={p.output} />;
+                  return <ToolCard key={key} name={name} state={p.state} output={p.output} telegram={telegram} />;
                 }
                 return null;
               })}
@@ -140,7 +151,7 @@ export function AgentChat({ available, revoked, paypalLinked }: { available: boo
   );
 }
 
-function ToolCard({ name, state, output }: { name: string; state: string; output?: ToolOut }) {
+function ToolCard({ name, state, output, telegram }: { name: string; state: string; output?: ToolOut; telegram: boolean }) {
   const label = TOOL_LABEL[name] ?? name;
   if (state !== "output-available") {
     return (
@@ -157,7 +168,7 @@ function ToolCard({ name, state, output }: { name: string; state: string; output
   if (name === "request_purchase" && d?.purchase_id) {
     const key = d.status === "approved" ? "captured" : (d.status as string);
     const s = PURCHASE_STATUS[key] ?? { label: d.status, className: "" };
-    return (
+    const row = (
       <Link href={`/purchases/${d.purchase_id}`} className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50">
         <span className="min-w-0 truncate">
           {((d.items as { name: string }[] | undefined) ?? []).map((i) => i.name).join(", ")}
@@ -165,6 +176,16 @@ function ToolCard({ name, state, output }: { name: string; state: string; output
         </span>
         <Badge className={s.className}>{s.label}</Badge>
       </Link>
+    );
+    if (d.status !== "pending_approval") return row;
+    return (
+      <div className="space-y-2">
+        {row}
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="mb-1 font-medium">Waiting for you</p>
+          <ApprovalHelp telegram={telegram} />
+        </div>
+      </div>
     );
   }
   return (
