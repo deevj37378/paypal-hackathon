@@ -4,7 +4,7 @@ import { decidePurchase, PurchaseInputError } from "@/lib/purchases/service";
 import { and, desc, eq, gt } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { notifyPurchase } from "@/lib/purchases/notify";
-import { consumeLinkCode, escapeHtml, tg, userByChatId, verifyTelegramSecret } from "@/lib/telegram";
+import { consumeLinkCode, escapeHtml, purchaseOwnerForChat, tg, verifyTelegramSecret } from "@/lib/telegram";
 
 /**
  * Telegram Bot webhook. Verified by the secret_token header we registered with setWebhook.
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
 async function handleDecision(callbackId: string, chatId: string, data: string) {
   const m = data.match(/^([ad]):(pur_[a-z0-9]{8,40})$/);
-  const user = await userByChatId(chatId);
+  const user = m ? await purchaseOwnerForChat(chatId, m[2]) : null;
   if (!m || !user) {
     await tg("answerCallbackQuery", { callback_query_id: callbackId, text: "This chat isn't connected to that account.", show_alert: true });
     return;

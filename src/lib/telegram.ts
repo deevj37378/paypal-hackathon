@@ -66,8 +66,17 @@ export async function consumeLinkCode(code: string, chatId: string, username?: s
   return row.userId;
 }
 
-export async function userByChatId(chatId: string) {
-  const [u] = await db().select().from(schema.users).where(eq(schema.users.telegramChatId, chatId)).limit(1);
+/**
+ * The owner of a purchase, if that owner is linked to this chat. One Telegram chat can be linked to
+ * several (demo) accounts, so resolve by the purchase, never by "the" account for the chat.
+ */
+export async function purchaseOwnerForChat(chatId: string, purchaseId: string) {
+  const [u] = await db()
+    .select({ id: schema.users.id })
+    .from(schema.purchases)
+    .innerJoin(schema.users, eq(schema.users.id, schema.purchases.userId))
+    .where(and(eq(schema.purchases.id, purchaseId), eq(schema.users.telegramChatId, chatId)))
+    .limit(1);
   return u ?? null;
 }
 
