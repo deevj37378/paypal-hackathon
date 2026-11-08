@@ -82,7 +82,7 @@ The merchant side has a live analytics dashboard (`/store/analytics`) built with
 - **Lost responses.** A charge can succeed at PayPal while our request times out. Purchases stay "processing" until the signature-verified capture webhook reconciles them.
 - **LLMs and safety settings.** An early rules compiler silently dropped limits the user didn't re-mention. Now anything not mentioned keeps its current value, and every kept value is listed before you confirm.
 - **Free-tier AI quotas.** Each free model has small per-minute and per-day quotas, so we chain four models with cooldowns, and AG Studio's large dashboard turns go to Gemini first because its per-minute token limit is highest.
-- **Real-world networks:** t.me links are blocked on some ISPs, so Telegram can also be connected via a `tg://` link or a copyable `/start` code.
+- **Works on a laptop:** one Connect Telegram click opens the bot in Telegram Web (no app needed, and no t.me link, which some ISPs block); a copyable `/start` code covers the app. The card notices the connection by itself.
 
 ## Accomplishments that we're proud of
 

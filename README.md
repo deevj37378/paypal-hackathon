@@ -35,7 +35,7 @@ Allowance gives any AI agent (Claude, ChatGPT, your own) a **limited, revocable 
 9. **Demo store** (`/store`) and **Merchant view** (`/store/merchant`): agent-made sales, payouts received, refunds and clawbacks, each order's mandate check.
 10. **Analytics** (`/store/analytics`, built with **AG Studio**, data from every demo account): click *Blocked by rules* in the "What the rule checker decided" flow and every widget filters to blocked requests. Switch to **Edit layout** and click the starter "Why are purchases blocked?".
 
-Optional: **Agents → Create key** shows copy-paste config for **Claude Desktop** (MCP via `mcp-remote`) and **Claude Code**. Connect **Telegram** on the dashboard to approve held purchases from your phone.
+Optional: **Agents → Create key** shows copy-paste config for **Claude Desktop** (MCP via `mcp-remote`) and **Claude Code**. Connect **Telegram** on the dashboard (one click opens Telegram Web in a new tab; press Start) to approve held purchases on your laptop or phone.
 
 ---
 
