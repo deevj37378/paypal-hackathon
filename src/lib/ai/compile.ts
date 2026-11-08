@@ -73,7 +73,7 @@ export async function compileRules(userId: string, text: string): Promise<Compil
   if (!model) return { kind: "error", message: "AI rule translation isn't available right now. You can still edit your rules with the form." };
   const [vocab, current] = await Promise.all([storeVocabulary(), getActivePolicy(userId)]);
   const keepTrusted = current?.rules.trustedMerchants ?? [];
-  const cacheKey = hashKey("compile:v5", text.trim().toLowerCase(), JSON.stringify(vocab), JSON.stringify(current?.rules ?? null));
+  const cacheKey = hashKey("compile:v6", text.trim().toLowerCase(), JSON.stringify(vocab), JSON.stringify(current?.rules ?? null));
   const cached = await cacheGet<CompileResult>(cacheKey);
   if (cached) return cached;
 
@@ -185,6 +185,15 @@ export async function compileRules(userId: string, text: string): Promise<Compil
       notes = [...kept, ...notes];
       if (!draft.trustedMerchants.length && keepTrusted.length) {
         notes.push(`Kept your trusted merchants (${keepTrusted.map(merchantName).join(", ")}), so they don't count as "new".`);
+      }
+      // Honest about categories the demo store doesn't carry (deterministic, from the catalog).
+      const known = new Set(vocab.categories);
+      const unknownAllowed = parsed.data.allowedCategories.filter((c) => !known.has(c));
+      for (const c of [...new Set([...unknownAllowed, ...parsed.data.blockedCategories.filter((c) => !known.has(c))])]) {
+        notes.push(`The demo store doesn't sell "${c}" yet, so nothing here will match it.`);
+      }
+      if (unknownAllowed.length && unknownAllowed.length === parsed.data.allowedCategories.length) {
+        notes.push(`With only ${unknownAllowed.map((c) => `"${c}"`).join(" and ")} allowed, every purchase in the demo store would be blocked.`);
       }
       result = { kind: "rules", rules: parsed.data, assumptions: notes, provider: "ai" };
     }

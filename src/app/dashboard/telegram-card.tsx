@@ -1,62 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyField } from "./agents-panel";
-
-type Link = { url: string; appUrl: string; code: string; bot: string };
-
-const POLL_MS = 4000;
-const CODE_LIFETIME_MS = 15 * 60 * 1000;
-
-/** Telegram Web opens the bot chat in the browser, so connecting works on a laptop without the Telegram app. */
-const telegramWebUrl = (link: Link) => `https://web.telegram.org/k/#?tgaddr=${encodeURIComponent(link.appUrl)}`;
+import { StartCodeFallback, TelegramNextStep, useTelegramConnect } from "@/components/telegram-connect";
 
 export function TelegramCard({ connected, username, enabled }: { connected: boolean; username: string | null; enabled: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [link, setLink] = useState<(Link & { expiresAt: number }) | null>(null);
-
-  // One click: open the tab synchronously (so popup blockers allow it), then point it at Telegram Web.
-  const connect = async () => {
-    if (creating) return;
-    setError(null);
-    setCreating(true);
-    const tab = window.open("about:blank", "_blank");
-    if (tab) tab.opener = null;
-    try {
-      const res = await fetch("/api/telegram/link", { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.code) throw new Error(data.message ?? "Couldn't create a Telegram link.");
-      const next = { ...(data as Link), expiresAt: Date.now() + CODE_LIFETIME_MS };
-      if (tab) tab.location.href = telegramWebUrl(next);
-      setLink(next);
-    } catch (e) {
-      tab?.close();
-      setError(e instanceof Error ? e.message : "Couldn't create a Telegram link.");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // Notice the connection by itself: refresh every 4 s while waiting, only while this tab is visible, until the code expires.
-  useEffect(() => {
-    if (!link || connected) return;
-    const id = setInterval(() => {
-      if (Date.now() > link.expiresAt) return clearInterval(id);
-      if (document.visibilityState === "visible") router.refresh();
-    }, POLL_MS);
-    return () => clearInterval(id);
-  }, [link, connected, router]);
+  const { connect, creating, error, link, reset } = useTelegramConnect(connected);
 
   const disconnect = () =>
     start(async () => {
       await fetch("/api/telegram/disconnect", { method: "POST" });
-      setLink(null);
+      reset();
       router.refresh();
     });
 
@@ -96,21 +54,20 @@ export function TelegramCard({ connected, username, enabled }: { connected: bool
           </>
         ) : (
           <div className="space-y-3">
-            <p>
-              Telegram opened in a new tab. Press <strong>Start</strong> there (sign in with the QR code if Telegram asks).
-            </p>
-            <p className="text-muted-foreground">
-              Didn&apos;t open?{" "}
-              <a href={telegramWebUrl(link)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
-                Open Telegram
-              </a>
-            </p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>
-                Prefer the app? Open <strong>@{link.bot}</strong> and send this (works once, for 15 minutes):
-              </p>
-              <CopyField value={`/start ${link.code}`} label="Telegram start command" />
-            </div>
+            <TelegramNextStep
+              link={link}
+              opened={
+                <>
+                  Telegram opened in a new tab. Press <strong>Start</strong> there (sign in with the QR code if Telegram asks).
+                </>
+              }
+              mobileHint={
+                <>
+                  Then press <strong>Start</strong> in Telegram.
+                </>
+              }
+            />
+            <StartCodeFallback link={link} />
             <p className="text-xs text-muted-foreground">
               This card updates by itself once Telegram says &ldquo;Connected&rdquo;. If it doesn&apos;t,{" "}
               <button className="underline underline-offset-2" onClick={() => router.refresh()}>

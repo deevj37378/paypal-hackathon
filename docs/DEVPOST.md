@@ -104,6 +104,7 @@ The merchant side has a live analytics dashboard (`/store/analytics`) built with
 
 - Production onboarding: PayPal Commerce Platform for real merchants instead of one platform account paying stores via Payouts.
 - **Per-agent budgets** and scopes ("the travel agent gets $500, the grocery agent $150"), each with its own signed mandate.
+- Per-category budgets (e.g. $200 a month for travel alongside $150 for coffee and books), with categories taken from real merchants' data (card merchant category codes or AP2 cart details) instead of our demo catalog.
 - Full AP2 interoperability: accept a merchant's signed CartMandate and return our signed receipt over the AP2 flow.
 - OAuth for MCP so claude.ai web connectors and other hosted agents can connect without copying keys.
 - Support for agentic-commerce protocols, so any agent-ready store can be a merchant.
@@ -117,7 +118,7 @@ next.js · typescript · react · tailwindcss · shadcn-ui · ag-studio · ag-gr
 
 ### Testing instructions for judges (Devpost private field)
 
-- Live: https://allowance-eight-eta.vercel.app → **Try the demo** (no login). Follow "Play the story" on the dashboard; the README has a 2-minute judge path.
+- Live: https://allowance-eight-eta.vercel.app → **Try the demo** (no login). Follow "Play the story" on the dashboard; the README has a 2-minute judge path. At step 2 (the $32 book, held for approval), click **Send it to Telegram**: one click opens Telegram (Web on a laptop), press Start, and the request follows you there with Approve / Decline. Or approve it on the dashboard.
 - Optional real PayPal linking: "Start with my own PayPal" → Link PayPal → log in with the judge sandbox buyer **[JUDGE SANDBOX ACCOUNT: email + password, a separate sandbox personal account created only for judges]**.
 - Please don't use any other sandbox account: "Try the demo" relies on a separate pre-linked sandbox buyer, and changing that account's saved-PayPal consent would break the demo for everyone.
 - Optional Claude Desktop: Agents → Create key → copy the Claude Desktop config (needs Node.js).

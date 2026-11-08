@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SendToTelegram } from "@/components/telegram-connect";
 
 /**
  * "What do I do now?" for a purchase held for approval. Used everywhere a held purchase shows up
@@ -38,23 +39,17 @@ export function ApprovalHelp({
       </>
     );
   return (
-    <div className={`space-y-1 ${className}`}>
+    <div className={`space-y-2 ${className}`}>
       {telegram ? (
         <p>
           Tap <strong>Approve</strong> or <strong>Decline</strong> on the
           message we sent you in Telegram, or use {where}.
         </p>
       ) : (
-        <p>
-          Use {where}. Want these on your phone?{" "}
-          <Link
-            href="/dashboard#telegram"
-            className="underline underline-offset-2"
-          >
-            Connect Telegram
-          </Link>
-          .
-        </p>
+        <>
+          <p>Use {where}.</p>
+          <SendToTelegram />
+        </>
       )}
       <p className="opacity-80">
         Nothing is charged until you approve. Unanswered requests expire after
